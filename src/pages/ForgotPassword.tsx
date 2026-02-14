@@ -15,21 +15,25 @@ const ForgotPassword = () => {
     e.preventDefault();
 
     if (!email) {
-      toast.error('Digite seu email');
+      toast.error('Enter your email');
       return;
     }
+
+    // Backend does not expose forgot-password yet; avoid calling to prevent errors.
+    toast.error('Password recovery is not available yet.');
+    return;
 
     setIsLoading(true);
     try {
       const response = await authApi.forgotPassword(email);
       if (response.success) {
         setIsSent(true);
-        toast.success('Email enviado com sucesso!');
+        toast.success('Recovery email sent!');
       } else {
-        toast.error(response.message || 'Erro ao enviar email');
+        toast.error(response.message || 'Error sending email');
       }
     } catch (error) {
-      toast.error('Erro ao conectar com o servidor');
+      toast.error('Failed to connect to server');
     } finally {
       setIsLoading(false);
     }
@@ -37,7 +41,7 @@ const ForgotPassword = () => {
 
   if (isSent) {
     return (
-      <AuthLayout title="Email enviado" subtitle="Verifique sua caixa de entrada">
+      <AuthLayout title="Email sent" subtitle="Check your inbox">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -47,14 +51,14 @@ const ForgotPassword = () => {
             <CheckCircle className="w-8 h-8 text-accent" />
           </div>
           <p className="text-muted-foreground mb-6">
-            Enviamos um link de recuperação para <strong className="text-foreground">{email}</strong>
+            We sent a recovery link to <strong className="text-foreground">{email}</strong>
           </p>
           <Link
             to="/login"
             className="auth-button inline-flex items-center justify-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
-            Voltar para login
+            Back to login
           </Link>
         </motion.div>
       </AuthLayout>
@@ -63,8 +67,8 @@ const ForgotPassword = () => {
 
   return (
     <AuthLayout
-      title="Esqueceu a senha?"
-      subtitle="Digite seu email para receber o link de recuperação"
+      title="Forgot your password?"
+      subtitle="Enter your email to receive a recovery link"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <motion.div
@@ -72,15 +76,13 @@ const ForgotPassword = () => {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <label className="block text-sm font-medium text-foreground mb-2">
-            Email
-          </label>
+          <label className="block text-sm font-medium text-foreground mb-2">Email</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="auth-input"
-            placeholder="seu@email.com"
+            placeholder="you@example.com"
             disabled={isLoading}
           />
         </motion.div>
@@ -96,10 +98,10 @@ const ForgotPassword = () => {
           {isLoading ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              Enviando...
+              Sending...
             </>
           ) : (
-            'Enviar link de recuperação'
+            'Send recovery link'
           )}
         </motion.button>
 
@@ -114,7 +116,7 @@ const ForgotPassword = () => {
             className="text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
           >
             <ArrowLeft className="w-4 h-4" />
-            Voltar para login
+            Back to login
           </Link>
         </motion.div>
       </form>

@@ -1,10 +1,14 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { LogIn, UserPlus, Lock } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const Index = () => {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-secondary/30 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-secondary/30 px-4 relative">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -21,10 +25,10 @@ const Index = () => {
         </motion.div>
         
         <h1 className="text-4xl font-semibold text-foreground mb-3">
-          Sistema de Autenticação
+          Authentication System
         </h1>
         <p className="text-lg text-muted-foreground mb-10 max-w-md">
-          Interface moderna e minimalista para login, registro e recuperação de senha.
+          Modern and minimal interface for login, registration, and password recovery.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -38,7 +42,7 @@ const Index = () => {
               className="auth-button inline-flex items-center justify-center gap-2 px-8"
             >
               <LogIn className="w-5 h-5" />
-              Entrar
+              Sign in
             </Link>
           </motion.div>
           
@@ -52,7 +56,7 @@ const Index = () => {
               className="inline-flex items-center justify-center gap-2 px-8 h-12 rounded-xl border-2 border-primary text-primary font-medium hover:bg-primary hover:text-primary-foreground transition-all duration-200"
             >
               <UserPlus className="w-5 h-5" />
-              Criar conta
+              Create account
             </Link>
           </motion.div>
         </div>

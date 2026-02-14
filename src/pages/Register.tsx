@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { AuthLayout } from '@/components/auth/AuthLayout';
-import { authApi } from '@/services/authApi';
+import { userApi } from '@/services/userApi';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
@@ -19,53 +19,57 @@ const Register = () => {
     e.preventDefault();
 
     if (!name || !email || !password || !confirmPassword) {
-      toast.error('Preencha todos os campos');
+      toast.error('Fill in all fields');
       return;
     }
 
     if (password !== confirmPassword) {
-      toast.error('As senhas não coincidem');
+      toast.error('Passwords do not match');
       return;
     }
 
     if (password.length < 6) {
-      toast.error('A senha deve ter pelo menos 6 caracteres');
+      toast.error('Password must be at least 6 characters');
       return;
     }
 
     setIsLoading(true);
     try {
-      const response = await authApi.register({ name, email, password });
+      const response = await userApi.create({ name, email, password, confirm_password: confirmPassword });
       if (response.success) {
-        toast.success('Conta criada com sucesso!');
+        toast.success('Account created successfully!', {
+          className: 'toast-success',
+        });
         navigate('/login');
       } else {
-        toast.error(response.message || 'Erro ao criar conta');
+        toast.error(response.message || 'Error creating account', {
+          className: 'toast-error',
+        });
       }
     } catch (error) {
-      toast.error('Erro ao conectar com o servidor');
+      toast.error('Failed to connect to server', {
+        className: 'toast-error',
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <AuthLayout title="Criar conta" subtitle="Preencha os dados para começar">
+    <AuthLayout title="Create account" subtitle="Fill in the details to get started">
       <form onSubmit={handleSubmit} className="space-y-4">
         <motion.div
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <label className="block text-sm font-medium text-foreground mb-2">
-            Nome completo
-          </label>
+          <label className="block text-sm font-medium text-foreground mb-2">Full name</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="auth-input"
-            placeholder="Seu nome"
+            placeholder="Your name"
             disabled={isLoading}
           />
         </motion.div>
@@ -93,9 +97,7 @@ const Register = () => {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <label className="block text-sm font-medium text-foreground mb-2">
-            Senha
-          </label>
+          <label className="block text-sm font-medium text-foreground mb-2">Password</label>
           <div className="relative">
             <input
               type={showPassword ? 'text' : 'password'}
@@ -120,9 +122,7 @@ const Register = () => {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.35 }}
         >
-          <label className="block text-sm font-medium text-foreground mb-2">
-            Confirmar senha
-          </label>
+          <label className="block text-sm font-medium text-foreground mb-2">Confirm password</label>
           <input
             type={showPassword ? 'text' : 'password'}
             value={confirmPassword}
@@ -144,10 +144,10 @@ const Register = () => {
           {isLoading ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              Criando...
+              Creating...
             </>
           ) : (
-            'Criar conta'
+            'Create account'
           )}
         </motion.button>
 
@@ -157,9 +157,9 @@ const Register = () => {
           transition={{ delay: 0.5 }}
           className="text-center text-sm text-muted-foreground mt-6"
         >
-          Já tem uma conta?{' '}
+          Already have an account?{' '}
           <Link to="/login" className="auth-link">
-            Entrar
+            Sign in
           </Link>
         </motion.p>
       </form>

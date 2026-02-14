@@ -1,69 +1,45 @@
-// TODO: Implementar chamadas para API local
-// Base URL da API
-const API_BASE_URL = 'http://localhost:3001/api/auth';
-
-export interface LoginCredentials {
-  email: string;
-  password: string;
-}
-
-export interface RegisterCredentials {
-  name: string;
-  email: string;
-  password: string;
-}
-
-export interface AuthResponse {
-  success: boolean;
-  message?: string;
-  user?: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  token?: string;
-}
+import { invoke } from "@tauri-apps/api/core";
+import { ApiResponse } from "@/types/api";
+import type { LoginPayload, LoginResponseData, LoginResult } from "@/types/auth";
 
 export const authApi = {
-  // TODO: Implementar chamada de login para API
-  async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    // TODO: Substituir por chamada real à API
-    // const response = await fetch(`${API_BASE_URL}/login`, {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify(credentials),
-    // });
-    // return response.json();
+  async login(credentials: LoginPayload): Promise<LoginResult> {
+    try {
+      const resp = await invoke<ApiResponse<LoginResponseData>>("login", {
+        payload: credentials,
+      });
 
-    console.log('TODO: Login API call', credentials);
-    return { success: true, message: 'Login simulado - implementar API' };
+      if (!resp.success) {
+        return { success: false, message: normalizeMessage(resp.message) };
+      }
+
+      return {
+        success: true,
+        message: resp.message,
+        token: resp.data?.token,
+        user: resp.data?.user,
+      };
+    } catch (err) {
+      console.error("login invoke error", err);
+      return { success: false, message: normalizeMessage(err) };
+    }
   },
 
-  // TODO: Implementar chamada de registro para API
-  async register(credentials: RegisterCredentials): Promise<AuthResponse> {
-    // TODO: Substituir por chamada real à API
-    // const response = await fetch(`${API_BASE_URL}/register`, {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify(credentials),
-    // });
-    // return response.json();
-
-    console.log('TODO: Register API call', credentials);
-    return { success: true, message: 'Registro simulado - implementar API' };
-  },
-
-  // TODO: Implementar chamada de recuperação de senha para API
-  async forgotPassword(email: string): Promise<AuthResponse> {
-    // TODO: Substituir por chamada real à API
-    // const response = await fetch(`${API_BASE_URL}/forgot-password`, {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ email }),
-    // });
-    // return response.json();
-
-    console.log('TODO: Forgot Password API call', email);
-    return { success: true, message: 'Email de recuperação simulado - implementar API' };
+  async forgotPassword(_email: string): Promise<LoginResult> {
+    return { success: false, message: "Password recovery not implemented on backend." };
   },
 };
+
+function normalizeMessage(msg: unknown): string {
+  if (typeof msg === "string") return msg;
+  if (msg && typeof msg === "object") {
+    const m = (msg as any).message;
+    if (typeof m === "string") return m;
+    try {
+      return JSON.stringify(msg);
+    } catch {
+      return String(msg);
+    }
+  }
+  return String(msg ?? "Unknown error");
+}

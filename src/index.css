@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 @layer base {
   :root {
@@ -122,4 +122,23 @@
   .auth-link {
     @apply text-accent hover:text-accent/80 transition-colors duration-200 font-medium;
   }
+
+  .toast-success {
+    @apply bg-green-100 text-green-800;
+  }
+
+  .toast-error {
+    @apply bg-red-100 text-red-800;
+  }
+}
+
+/* Sonner defaults override */
+.toaster [data-type="success"] {
+  background: #dcfce7 !important;
+  color: #166534 !important;
+}
+
+.toaster [data-type="error"] {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
 }

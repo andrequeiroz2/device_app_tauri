@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { AuthLayout } from '@/components/auth/AuthLayout';
-import { authApi } from '@/services/authApi';
+import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
 const Login = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -17,43 +18,41 @@ const Login = () => {
     e.preventDefault();
     
     if (!email || !password) {
-      toast.error('Preencha todos os campos');
+      toast.error('Fill in all fields');
       return;
     }
 
     setIsLoading(true);
     try {
-      const response = await authApi.login({ email, password });
+      const response = await login({ email, password });
       if (response.success) {
-        toast.success('Login realizado com sucesso!');
+        toast.success('Login successful!');
         navigate('/');
       } else {
-        toast.error(response.message || 'Erro ao fazer login');
+        toast.error(response.message || 'Error logging in');
       }
     } catch (error) {
-      toast.error('Erro ao conectar com o servidor');
+      toast.error('Failed to connect to server');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <AuthLayout title="Bem-vindo de volta" subtitle="Entre com suas credenciais para acessar">
+    <AuthLayout title="Welcome back" subtitle="Sign in with your credentials">
       <form onSubmit={handleSubmit} className="space-y-4">
         <motion.div
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <label className="block text-sm font-medium text-foreground mb-2">
-            Email
-          </label>
+          <label className="block text-sm font-medium text-foreground mb-2">Email</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="auth-input"
-            placeholder="seu@email.com"
+            placeholder="you@example.com"
             disabled={isLoading}
           />
         </motion.div>
@@ -63,9 +62,7 @@ const Login = () => {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <label className="block text-sm font-medium text-foreground mb-2">
-            Senha
-          </label>
+          <label className="block text-sm font-medium text-foreground mb-2">Password</label>
           <div className="relative">
             <input
               type={showPassword ? 'text' : 'password'}
@@ -92,7 +89,7 @@ const Login = () => {
           className="flex justify-end"
         >
           <Link to="/forgot-password" className="text-sm auth-link">
-            Esqueceu a senha?
+            Forgot your password?
           </Link>
         </motion.div>
 
@@ -107,10 +104,10 @@ const Login = () => {
           {isLoading ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              Entrando...
+              Signing in...
             </>
           ) : (
-            'Entrar'
+            'Sign in'
           )}
         </motion.button>
 
@@ -120,9 +117,9 @@ const Login = () => {
           transition={{ delay: 0.5 }}
           className="text-center text-sm text-muted-foreground mt-6"
         >
-          Não tem uma conta?{' '}
+          Don't have an account?{' '}
           <Link to="/register" className="auth-link">
-            Criar conta
+            Create account
           </Link>
         </motion.p>
       </form>

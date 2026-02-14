@@ -1,3 +1,5 @@
+# Tasks
+tasks/
 # Logs
 logs
 *.log
@@ -7,19 +9,31 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Env (somente valores não sensíveis em dev)
+.env
+.env.*
+*.local
+
+# Builds / deps
 node_modules
 dist
 dist-ssr
-*.local
+target
+src-tauri/target
+.tauri
+src-tauri/bin
 
 # Editor directories and files
-.vscode/*
-.idea/*
-!.vscode/extensions.json
-.idea
+.vscode/
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# DB artefacts
+*.db
+*.db-shm
+*.db-wal
