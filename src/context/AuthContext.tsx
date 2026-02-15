@@ -21,7 +21,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const storedToken = storage.getToken();
     if (storedToken) {
-      setToken(storedToken);
+      if (isTokenExpired(storedToken)) {
+        storage.clearToken();
+      } else {
+        setToken(storedToken);
+      }
     }
     setIsLoading(false);
   }, []);
@@ -64,6 +68,15 @@ export const useAuth = () => {
   return ctx;
 };
 
-
-
-
+function isTokenExpired(jwt: string): boolean {
+  const parts = jwt.split(".");
+  if (parts.length !== 3) return true;
+  try {
+    const payload = JSON.parse(atob(parts[1]));
+    const exp = typeof payload.exp === "number" ? payload.exp : 0;
+    const now = Math.floor(Date.now() / 1000);
+    return exp <= now;
+  } catch {
+    return true;
+  }
+}

@@ -1,5 +1,5 @@
 use sqlx::{Pool, Sqlite};
-use crate::api::user::user_model::{UserCreateDB, UserResponseDB, UserWithPassword};
+use crate::api::user::user_model::{UserCreateDB, UserResponseDB, UserWithPassword, User};
 use crate::api::error::map_db_error;
 use sqlx::Error as SqlxError;
 use tracing::{instrument, error};
@@ -25,6 +25,28 @@ pub async fn user_post_query(
             error!(error = %e, "fn: user_post_query");
             map_db_error(&e)
         })?;
+
+    Ok(rec)
+}
+
+#[instrument(skip(pool), fields(user_uuid = %uuid))]
+pub async fn user_get_by_uuid_query(
+    uuid: &str,
+    pool: &Pool<Sqlite>,
+) -> Result<User, String> {
+    let rec = sqlx::query_as::<_, User>(
+        "SELECT id, uuid, username, email, is_active, created_at, updated_at FROM users WHERE uuid = ?1 LIMIT 1",
+    )
+    .bind(uuid)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        if let SqlxError::RowNotFound = e {
+            return "User not found".to_string();
+        }
+        error!(error = %e, "fn: user_get_by_uuid_query");
+        map_db_error(&e)
+    })?;
 
     Ok(rec)
 }

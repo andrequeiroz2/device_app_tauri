@@ -22,3 +22,16 @@ pub fn map_password_hash_error(err: &PasswordHashError) -> String {
     INTERNAL_SERVER_ERROR.to_string()
 }
 
+pub fn map_location_db_error(err: &Error) -> String {
+    if let Error::Database(db_err) = err {
+        if db_err.code().as_deref() == Some("2067") {
+            error!(code = ?db_err.code(), message = %db_err, "location db error: unique constraint");
+            return "Location already exists".to_string();
+        }
+        error!(code = ?db_err.code(), message = %db_err, "location db error");
+    } else {
+        error!(error = %err, "location db error");
+    }
+    INTERNAL_SERVER_ERROR.to_string()
+}
+

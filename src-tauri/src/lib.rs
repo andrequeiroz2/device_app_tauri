@@ -12,6 +12,11 @@ use uuid::Uuid;
 use api::auth::auth_tool::{ensure_keys, setup_auth_keys, load_keys_to_memory};
 use api::auth::auth_model::{AuthKeys, LoginInput, LoginResponse};
 use api::auth::auth_handler::login_handler;
+use api::location::location_handler::create_location_handler;
+use api::location::location_handler::list_locations_handler;
+use api::location::location_handler::delete_location_handler;
+use api::location::location_model::{LocationCreateCommandInput, LocationListParams};
+use api::location::location_model::LocationDeleteInput;
 use tauri::Manager;
 
 
@@ -70,6 +75,91 @@ async fn login(
     }
 }
 
+#[tauri::command]
+async fn create_location(
+    token: String,
+    payload: LocationCreateCommandInput,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+    app_handle: tauri::AppHandle,
+) -> Result<ApiResponse<api::location::location_model::LocationPublic>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "create_location",
+        request_id = %request_id,
+        name = %payload.location.name,
+        address = %payload.location.address,
+    );
+    let _guard = span.enter();
+
+    match create_location_handler(&token, &payload, &pool, &app_handle).await {
+        Ok(resp) => {
+            if let Some(loc) = &resp.data {
+                info!(request_id = %request_id, uuid = %loc.uuid, "create_location: success");
+            } else {
+                info!(request_id = %request_id, "create_location: success (no data)");
+            }
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(request_id = %request_id, error = %err.message, "create_location: error");
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn list_locations(
+    token: String,
+    params: LocationListParams,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<api::location::location_model::LocationListResponse>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "list_locations",
+        request_id = %request_id,
+        page = ?params.page,
+        page_size = ?params.page_size,
+    );
+    let _guard = span.enter();
+
+    match list_locations_handler(&token, &params, &pool).await {
+        Ok(resp) => {
+            info!(request_id = %request_id, items = resp.data.as_ref().map(|r| r.items.len()).unwrap_or(0), total = resp.data.as_ref().map(|r| r.total).unwrap_or(0), "list_locations: success");
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(request_id = %request_id, error = %err.message, "list_locations: error");
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn delete_location(
+    token: String,
+    payload: LocationDeleteInput,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<()>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "delete_location",
+        request_id = %request_id,
+        location_uuid = %payload.uuid,
+    );
+    let _guard = span.enter();
+
+    match delete_location_handler(&token, &payload, &pool).await {
+        Ok(resp) => {
+            info!(request_id = %request_id, "delete_location: success");
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(request_id = %request_id, error = %err.message, "delete_location: error");
+            Err(err)
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_tracing();
@@ -78,7 +168,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(pool)
-        .invoke_handler(tauri::generate_handler![create_user, login])
+        .invoke_handler(tauri::generate_handler![create_user, login, create_location, list_locations, delete_location])
         .setup(|app| {
             let handle = app.handle();
             let key_paths = ensure_keys(&handle)?;

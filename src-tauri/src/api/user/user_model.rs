@@ -4,9 +4,9 @@ use sqlx::FromRow;
 use tracing::{debug, instrument};
 use crate::api::user::user_tool::get_password_hash;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, FromRow)]
 pub struct User {
-    pub id: i32,
+    pub id: i64,
     pub uuid: String,
     pub username: String,
     pub email: String,

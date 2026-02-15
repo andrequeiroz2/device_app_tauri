@@ -47,11 +47,11 @@ pub async fn login_handler(
     let exp = exp_ts(config);
 
     let mut inf = HashMap::new();
-    inf.insert("uuid".to_string(), user.uuid.clone());
+    inf.insert("user_uuid".to_string(), user.uuid.clone());
     inf.insert("email".to_string(), user.email.clone());
 
     let claims = JwtClaims::new(
-        Some(config.aud_claims.clone()),
+        None, // aud: não validar audience para evitar InvalidAudience
         exp,
         Some(now),
         Some(config.iss_claims.clone()),

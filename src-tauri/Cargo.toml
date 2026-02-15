@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.5.5", features = [] }
 
 [dependencies]
-tauri = { version = "2.10.2", features = [] }
+tauri = { version = "2.10.2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -37,3 +37,8 @@ log = "0.4"
 #jsonwebtoken
 jwt_lib = { git = "https://github.com/andrequeiroz2/lib_jwt" }
 scrypt = "0.11.0"
+
+#image
+base64 = "0.22"
+sha2 = "0.10.9"
+image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
