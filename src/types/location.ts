@@ -50,10 +50,32 @@ export type LocationCreateCommandInput = {
   image?: LocationImageInput;
 };
 
+export type LocationStatusFilter = "active" | "all";
+
+export type LocationFilter = {
+  status: LocationStatusFilter;
+  name?: string; // Reserved for future use
+};
+
+export type LocationListParams = {
+  page?: number;
+  page_size?: number;
+  filter: LocationFilter;
+};
+
 export type LocationListResponse = {
   items: LocationPublic[];
   total: number;
   page: number;
   page_size: number;
+};
+
+export type LocationUpdateInput = {
+  uuid: string;
+  name?: string;
+  description?: string;
+  address?: string;
+  is_active?: boolean;
+  image?: LocationImageInput;
 };
 

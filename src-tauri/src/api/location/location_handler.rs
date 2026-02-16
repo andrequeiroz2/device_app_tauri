@@ -3,8 +3,8 @@ use tracing::{error, info, instrument};
 
 use tauri::AppHandle;
 use crate::api::auth::auth_validator::validate_bearer;
-use crate::api::location::location_model::{LocationCreateCommandInput, LocationListParams, LocationListResponse, LocationPublic, LocationDeleteInput};
-use crate::api::location::location_query::{location_post_query, location_list_query, location_soft_delete_query};
+use crate::api::location::location_model::{LocationCreateCommandInput, LocationListParams, LocationListResponse, LocationPublic, LocationDeleteInput, LocationUpdateInput};
+use crate::api::location::location_query::{location_post_query, location_list_query, location_soft_delete_query, location_get_by_uuid_query, location_update_query};
 use crate::api::model::{ApiError, ApiResponse};
 use crate::api::user::user_query::user_get_by_uuid_query;
 use crate::api::location::location_storage::{save_image_with_thumb, ImagePayload};
@@ -106,7 +106,7 @@ pub async fn delete_location_handler(
     Ok(ApiResponse::ok(()))
 }
 
-#[instrument(skip(token, params, pool), fields(page = ?params.page, page_size = ?params.page_size))]
+#[instrument(skip(token, params, pool), fields(page = ?params.page, page_size = ?params.page_size, filter = ?params.filter))]
 pub async fn list_locations_handler(
     token: &str,
     params: &LocationListParams,
@@ -126,10 +126,139 @@ pub async fn list_locations_handler(
     let page = params.page.unwrap_or(1).max(1);
     let page_size = params.page_size.unwrap_or(10).clamp(1, 50);
 
-    let resp = location_list_query(user.id, page, page_size, pool)
+    let resp = location_list_query(user.id, page, page_size, &params.filter, pool)
         .await
         .map_err(ApiError::err)?;
 
     Ok(ApiResponse::ok(resp))
+}
+
+#[instrument(skip(token, input, pool, app_handle), fields(location_uuid = %input.uuid))]
+pub async fn update_location_handler(
+    token: &str,
+    input: &LocationUpdateInput,
+    pool: &Pool<Sqlite>,
+    app_handle: &AppHandle,
+) -> Result<ApiResponse<LocationPublic>, ApiError> {
+    // 1) Auth
+    let auth = validate_bearer(token)?;
+
+    // 2) Validate payload
+    input.validate().map_err(ApiError::err)?;
+
+    // 3) Resolve user_id by uuid
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    if !user.is_active {
+        error!("update_location_handler: user inactive");
+        return Err(ApiError::err("Unauthorized".to_string()));
+    }
+
+    // 4) Validate ownership and location exists
+    let existing_location = location_get_by_uuid_query(user.id, &input.uuid, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    // 5) Validate business rule: inactive locations can only be activated
+    let is_activating = input.is_active == Some(true);
+    let has_other_updates = input.name.is_some()
+        || input.description.is_some()
+        || input.address.is_some()
+        || input.image.is_some();
+
+    if !existing_location.is_active && has_other_updates && !is_activating {
+        error!("update_location_handler: trying to update inactive location with fields other than is_active");
+        return Err(ApiError::err("Location is inactive. Only activation is allowed.".to_string()));
+    }
+
+    // 6) Convert input to DB payload
+    let mut db_payload = input.to_db();
+
+    // 7) If image provided, save file and fill metadata
+    if let Some(img) = &input.image {
+        let saved = save_image_with_thumb(
+            app_handle,
+            &auth.user_uuid,
+            &input.uuid,
+            ImagePayload {
+                data_base64: &img.data_base64,
+                original_name: &img.original_name,
+                mime: &img.mime,
+                size_bytes: img.size_bytes,
+            },
+        )
+        .map_err(ApiError::err)?;
+        db_payload = db_payload.with_saved_image(&saved);
+    }
+
+    // 8) Update
+    let location = location_update_query(user.id, &input.uuid, &db_payload, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    let public = LocationPublic {
+        uuid: location.uuid,
+        name: location.name,
+        description: location.description,
+        address: location.address,
+        is_active: location.is_active,
+        image_path: location.image_path,
+        thumb_path: location.thumb_path,
+        image_original_name: location.image_original_name,
+        image_mime: location.image_mime,
+        image_size_bytes: location.image_size_bytes,
+        image_checksum_sha256: location.image_checksum_sha256,
+        created_at: location.created_at,
+        updated_at: location.updated_at,
+    };
+
+    info!(uuid = %public.uuid, "update_location_handler: location updated");
+    Ok(ApiResponse::ok(public))
+}
+
+#[instrument(skip(token, location_uuid, pool), fields(location_uuid = %location_uuid))]
+pub async fn get_location_handler(
+    token: &str,
+    location_uuid: &str,
+    pool: &Pool<Sqlite>,
+) -> Result<ApiResponse<LocationPublic>, ApiError> {
+    // 1) Auth
+    let auth = validate_bearer(token)?;
+
+    // 2) Resolve user_id by uuid
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    if !user.is_active {
+        error!("get_location_handler: user inactive");
+        return Err(ApiError::err("Unauthorized".to_string()));
+    }
+
+    // 3) Get location by uuid (validates ownership)
+    let location = location_get_by_uuid_query(user.id, location_uuid, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    let public = LocationPublic {
+        uuid: location.uuid,
+        name: location.name,
+        description: location.description,
+        address: location.address,
+        is_active: location.is_active,
+        image_path: location.image_path,
+        thumb_path: location.thumb_path,
+        image_original_name: location.image_original_name,
+        image_mime: location.image_mime,
+        image_size_bytes: location.image_size_bytes,
+        image_checksum_sha256: location.image_checksum_sha256,
+        created_at: location.created_at,
+        updated_at: location.updated_at,
+    };
+
+    info!(uuid = %public.uuid, "get_location_handler: location retrieved");
+    Ok(ApiResponse::ok(public))
 }
 

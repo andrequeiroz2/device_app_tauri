@@ -15,7 +15,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<AuthResponse["user"] | null>(null);
+  const [user, setUser] = useState<LoginResult["user"] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

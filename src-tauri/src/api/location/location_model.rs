@@ -65,9 +65,52 @@ pub struct LocationDeleteInput {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct LocationUpdateInput {
+    pub uuid: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub address: Option<String>,
+    pub is_active: Option<bool>,
+    pub image: Option<LocationImageInput>,
+}
+
+/// Filter options for location status
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LocationStatusFilter {
+    /// Show only active locations (is_active = true)
+    Active,
+    /// Show all locations (active and inactive)
+    All,
+}
+
+impl Default for LocationStatusFilter {
+    fn default() -> Self {
+        LocationStatusFilter::Active
+    }
+}
+
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct LocationFilter {
+    #[serde(default)]
+    pub status: LocationStatusFilter,
+    
+}
+
+impl LocationFilter {
+    /// Returns true if we should show all locations (including inactive)
+    pub fn show_all(&self) -> bool {
+        matches!(self.status, LocationStatusFilter::All)
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct LocationListParams {
     pub page: Option<u32>,
     pub page_size: Option<u32>,
+    #[serde(default)]
+    pub filter: LocationFilter,
 }
 
 #[derive(Debug, Serialize)]
@@ -86,6 +129,20 @@ pub struct LocationCreateDB {
     pub description: Option<String>,
     pub address: String,
     pub is_active: bool,
+    pub image_path: Option<String>,
+    pub thumb_path: Option<String>,
+    pub image_original_name: Option<String>,
+    pub image_mime: Option<String>,
+    pub image_size_bytes: Option<i64>,
+    pub image_checksum_sha256: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct LocationUpdateDB {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub address: Option<String>,
+    pub is_active: Option<bool>,
     pub image_path: Option<String>,
     pub thumb_path: Option<String>,
     pub image_original_name: Option<String>,
@@ -149,6 +206,95 @@ impl LocationCreateInput {
             image_size_bytes,
             image_checksum_sha256,
         }
+    }
+}
+
+impl LocationUpdateInput {
+    #[instrument(skip(self))]
+    pub fn validate(&self) -> Result<(), String> {
+
+        let has_updates = self.name.is_some()
+            || self.description.is_some()
+            || self.address.is_some()
+            || self.is_active.is_some()
+            || self.image.is_some();
+
+        if !has_updates {
+            return Err("At least one field must be provided for update".to_string());
+        }
+
+        if self.uuid.trim().is_empty() {
+            return Err("UUID is required".to_string());
+        }
+
+        if let Some(ref name) = self.name {
+            if name.trim().is_empty() {
+                return Err("Name cannot be empty or contain only spaces".to_string());
+            }
+
+            if name != name.trim() {
+                return Err("Name cannot have leading or trailing spaces".to_string());
+            }
+            
+            if name.len() > 255 {
+                return Err("Name is too long (max 255)".to_string());
+            }
+        }
+
+        if let Some(ref address) = self.address {
+
+            if address.trim().is_empty() {
+                return Err("Address cannot be empty or contain only spaces".to_string());
+            }
+
+            if address != address.trim() {
+                return Err("Address cannot have leading or trailing spaces".to_string());
+            }
+
+            if address.len() > 512 {
+                return Err("Address is too long (max 512)".to_string());
+            }
+        }
+
+        if let Some(ref description) = self.description {
+            if !description.trim().is_empty() {
+                if description != description.trim() {
+                    return Err("Description cannot have leading or trailing spaces".to_string());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Convert to LocationUpdateDB for database operations.
+    pub fn to_db(&self) -> LocationUpdateDB {
+        LocationUpdateDB {
+            name: self.name.as_ref().map(|n| n.trim().to_string()),
+            description: self.description.as_ref().map(|d| d.trim().to_string()),
+            address: self.address.as_ref().map(|a| a.trim().to_string()),
+            is_active: self.is_active,
+            image_path: None,
+            thumb_path: None,
+            image_original_name: None,
+            image_mime: None,
+            image_size_bytes: None,
+            image_checksum_sha256: None,
+        }
+    }
+}
+
+impl LocationUpdateDB {
+    /// Uses the same SavedImage struct from location_storage.
+    pub fn with_saved_image(mut self, saved: &crate::api::location::location_storage::SavedImage) -> Self {
+        self.image_path = Some(saved.image_path.clone());
+        self.thumb_path = Some(saved.thumb_path.clone());
+        self.image_original_name = Some(saved.original_name.clone());
+        self.image_mime = Some(saved.mime.clone());
+        self.image_size_bytes = Some(saved.size_bytes);
+        self.image_checksum_sha256 = Some(saved.checksum_sha256.clone());
+
+        self
     }
 }
 

@@ -18,6 +18,7 @@ import NotFound from "./pages/NotFound";
 import Locations from "./pages/Locations";
 import LocationsList from "./pages/LocationsList";
 import LocationDetail from "./pages/LocationDetail";
+import LocationEdit from "./pages/LocationEdit";
 import Home from "./pages/Home";
 
 const queryClient = new QueryClient();
@@ -137,6 +138,14 @@ const App = () => (
                   element={
                     <ProtectedRoute>
                       <LocationDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/locations/:uuid/edit"
+                  element={
+                    <ProtectedRoute>
+                      <LocationEdit />
                     </ProtectedRoute>
                   }
                 />

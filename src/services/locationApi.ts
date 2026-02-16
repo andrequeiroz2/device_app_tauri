@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ApiResponse } from "@/types/api";
-import type { LocationCreateInput, LocationImageInput, LocationCreateCommandInput, LocationListResponse, LocationPublic } from "@/types/location";
+import type { LocationCreateInput, LocationImageInput, LocationCreateCommandInput, LocationListResponse, LocationPublic, LocationFilter, LocationUpdateInput } from "@/types/location";
 
 const normalizeMessage = (msg: unknown): string => {
   if (typeof msg === "string") return msg;
@@ -33,6 +33,20 @@ type ListLocationsResult = {
 type DeleteLocationResult = {
   success: boolean;
   message?: string;
+  unauthorized?: boolean;
+};
+
+type UpdateLocationResult = {
+  success: boolean;
+  message?: string;
+  data?: LocationPublic;
+  unauthorized?: boolean;
+};
+
+type GetLocationResult = {
+  success: boolean;
+  message?: string;
+  data?: LocationPublic;
   unauthorized?: boolean;
 };
 
@@ -91,11 +105,12 @@ export const locationApi = {
     token: string,
     page: number,
     pageSize: number,
+    filter: LocationFilter,
   ): Promise<ListLocationsResult> {
     try {
       const resp = await invoke<ApiResponse<LocationListResponse>>("list_locations", {
         token,
-        params: { page, page_size: pageSize },
+        params: { page, page_size: pageSize, filter },
       });
 
       if (!resp.success) {
@@ -147,6 +162,99 @@ export const locationApi = {
       };
     } catch (err) {
       const message = normalizeMessage(err);
+      return {
+        success: false,
+        message,
+        unauthorized: message.toLowerCase().includes("unauthorized"),
+      };
+    }
+  },
+
+  async updateLocation(
+    token: string,
+    payload: LocationUpdateInput,
+    image?: File | null,
+  ): Promise<UpdateLocationResult> {
+    try {
+      let updatePayload: LocationUpdateInput = { ...payload };
+
+      if (image) {
+        updatePayload.image = {
+          data_base64: await toBase64(image),
+          original_name: image.name,
+          mime: image.type,
+          size_bytes: image.size,
+        };
+      }
+
+      const resp = await invoke<ApiResponse<LocationPublic>>("update_location", {
+        token,
+        payload: updatePayload,
+      });
+
+      if (!resp.success) {
+        const message = normalizeMessage(resp.message);
+        return {
+          success: false,
+          message,
+          unauthorized: message.toLowerCase().includes("unauthorized"),
+        };
+      }
+
+      return {
+        success: true,
+        data: resp.data,
+        message: resp.message,
+      };
+    } catch (err) {
+      const message = normalizeMessage(err);
+      return {
+        success: false,
+        message,
+        unauthorized: message.toLowerCase().includes("unauthorized"),
+      };
+    }
+  },
+
+  async getLocation(
+    token: string,
+    locationUuid: string,
+  ): Promise<GetLocationResult> {
+    try {
+      console.log("getLocation called with:", { locationUuid, hasToken: !!token });
+      const resp = await invoke<ApiResponse<LocationPublic>>("get_location", {
+        token,
+        locationUuid: locationUuid, // Tauri converts camelCase to snake_case automatically
+      });
+
+      console.log("getLocation response:", resp);
+
+      if (!resp.success) {
+        const message = normalizeMessage(resp.message);
+        console.error("getLocation failed:", message);
+        return {
+          success: false,
+          message,
+          unauthorized: message.toLowerCase().includes("unauthorized"),
+        };
+      }
+
+      if (!resp.data) {
+        console.error("getLocation: response.success but no data");
+        return {
+          success: false,
+          message: "Location data not found in response",
+        };
+      }
+
+      return {
+        success: true,
+        data: resp.data,
+        message: resp.message,
+      };
+    } catch (err) {
+      const message = normalizeMessage(err);
+      console.error("getLocation invoke error:", err);
       return {
         success: false,
         message,

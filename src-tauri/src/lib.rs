@@ -15,8 +15,11 @@ use api::auth::auth_handler::login_handler;
 use api::location::location_handler::create_location_handler;
 use api::location::location_handler::list_locations_handler;
 use api::location::location_handler::delete_location_handler;
+use api::location::location_handler::update_location_handler;
+use api::location::location_handler::get_location_handler;
 use api::location::location_model::{LocationCreateCommandInput, LocationListParams};
 use api::location::location_model::LocationDeleteInput;
+use api::location::location_model::LocationUpdateInput;
 use tauri::Manager;
 
 
@@ -160,6 +163,88 @@ async fn delete_location(
     }
 }
 
+#[tauri::command]
+async fn update_location(
+    token: String,
+    payload: LocationUpdateInput,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+    app_handle: tauri::AppHandle,
+) -> Result<ApiResponse<api::location::location_model::LocationPublic>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "update_location",
+        request_id = %request_id,
+        location_uuid = %payload.uuid,
+    );
+    let _guard = span.enter();
+
+    match update_location_handler(&token, &payload, &pool, &app_handle).await {
+        Ok(resp) => {
+            if let Some(loc) = &resp.data {
+                info!(
+                    request_id = %request_id,
+                    uuid = %loc.uuid,
+                    name = %loc.name,
+                    is_active = loc.is_active,
+                    "update_location: success"
+                );
+            } else {
+                info!(request_id = %request_id, "update_location: success (no data)");
+            }
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(
+                request_id = %request_id,
+                error = %err.message,
+                location_uuid = %payload.uuid,
+                "update_location: error"
+            );
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn get_location(
+    token: String,
+    location_uuid: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<api::location::location_model::LocationPublic>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "get_location",
+        request_id = %request_id,
+        location_uuid = %location_uuid,
+    );
+    let _guard = span.enter();
+
+    match get_location_handler(&token, &location_uuid, &pool).await {
+        Ok(resp) => {
+            if let Some(loc) = &resp.data {
+                info!(
+                    request_id = %request_id,
+                    uuid = %loc.uuid,
+                    name = %loc.name,
+                    "get_location: success"
+                );
+            } else {
+                info!(request_id = %request_id, "get_location: success (no data)");
+            }
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(
+                request_id = %request_id,
+                error = %err.message,
+                location_uuid = %location_uuid,
+                "get_location: error"
+            );
+            Err(err)
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_tracing();
@@ -168,7 +253,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(pool)
-        .invoke_handler(tauri::generate_handler![create_user, login, create_location, list_locations, delete_location])
+        .invoke_handler(tauri::generate_handler![create_user, login, create_location, list_locations, delete_location, update_location, get_location])
         .setup(|app| {
             let handle = app.handle();
             let key_paths = ensure_keys(&handle)?;
