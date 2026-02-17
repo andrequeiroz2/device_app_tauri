@@ -96,7 +96,7 @@ const Locations = () => {
     <div className="min-h-screen bg-secondary/20 text-foreground">
       <div className="max-w-4xl mx-auto py-10 px-4 space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Locations</h1>
+          <h1 className="text-2xl font-semibold">Location</h1>
           <p className="text-muted-foreground text-sm">
             Create a new location with address and floor plan (PNG/JPG/WEBP up to 5 MB).
           </p>

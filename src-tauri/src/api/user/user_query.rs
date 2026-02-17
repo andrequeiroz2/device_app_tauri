@@ -76,3 +76,86 @@ pub async fn user_get_by_email(
 
     Ok(rec)
 }
+
+#[instrument(skip(pool), fields(user_id = user_id))]
+pub async fn user_get_by_id_query(
+    user_id: i64,
+    pool: &Pool<Sqlite>,
+) -> Result<User, String> {
+    let rec = sqlx::query_as::<_, User>(
+        r#"
+        SELECT id, uuid, username, email, is_active, created_at, updated_at
+        FROM users
+        WHERE id = ?1
+        LIMIT 1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        if let SqlxError::RowNotFound = e {
+            return "User not found".to_string();
+        }
+        error!(error = %e, "fn: user_get_by_id_query");
+        map_db_error(&e)
+    })?;
+
+    Ok(rec)
+}
+
+#[instrument(skip(pool), fields(user_uuid = %user_uuid))]
+pub async fn user_update_password_query(
+    user_uuid: &str,
+    password_hash: &str,
+    pool: &Pool<Sqlite>,
+) -> Result<(), String> {
+    let res = sqlx::query(
+        r#"
+        UPDATE users
+        SET password = ?1
+        WHERE uuid = ?2
+        "#,
+    )
+    .bind(password_hash)
+    .bind(user_uuid)
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "fn: user_update_password_query");
+        map_db_error(&e)
+    })?;
+
+    if res.rows_affected() == 0 {
+        return Err("User not found".to_string());
+    }
+
+    Ok(())
+}
+
+#[instrument(skip(pool), fields(user_uuid = %user_uuid))]
+pub async fn user_get_by_uuid_with_password_query(
+    user_uuid: &str,
+    pool: &Pool<Sqlite>,
+) -> Result<UserWithPassword, String> {
+    let rec = sqlx::query_as::<_, UserWithPassword>(
+        r#"
+        SELECT uuid, username, email, password, is_active, created_at, updated_at
+        FROM users
+        WHERE uuid = ?1
+        LIMIT 1
+        "#,
+    )
+    .bind(user_uuid)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        if let SqlxError::RowNotFound = e {
+            return "User not found".to_string();
+        }
+        error!(error = %e, "fn: user_get_by_uuid_with_password_query");
+        map_db_error(&e)
+    })?;
+
+    Ok(rec)
+}

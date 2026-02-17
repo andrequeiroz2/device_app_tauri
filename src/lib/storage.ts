@@ -1,9 +1,15 @@
 import type { LocationFilter } from "@/types/location";
+import type { MqttBrokerFilter } from "@/types/mqttBroker";
 
 const TOKEN_KEY = "device_app_token";
 const LOCATION_FILTER_KEY = "device_app_location_filter";
+const MQTT_BROKER_FILTER_KEY = "device_app_mqtt_broker_filter";
 
 const DEFAULT_FILTER: LocationFilter = {
+  status: "active",
+};
+
+const DEFAULT_MQTT_BROKER_FILTER: MqttBrokerFilter = {
   status: "active",
 };
 
@@ -38,6 +44,25 @@ export const storage = {
   setLocationFilter(filter: LocationFilter) {
     if (typeof localStorage === "undefined") return;
     localStorage.setItem(LOCATION_FILTER_KEY, JSON.stringify(filter));
+  },
+  getMqttBrokerFilter(): MqttBrokerFilter {
+    if (typeof localStorage === "undefined") return DEFAULT_MQTT_BROKER_FILTER;
+    try {
+      const stored = localStorage.getItem(MQTT_BROKER_FILTER_KEY);
+      if (!stored) return DEFAULT_MQTT_BROKER_FILTER;
+      const parsed = JSON.parse(stored) as MqttBrokerFilter;
+      // Validate structure
+      if (parsed.status === "active" || parsed.status === "all") {
+        return parsed;
+      }
+      return DEFAULT_MQTT_BROKER_FILTER;
+    } catch {
+      return DEFAULT_MQTT_BROKER_FILTER;
+    }
+  },
+  setMqttBrokerFilter(filter: MqttBrokerFilter) {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(MQTT_BROKER_FILTER_KEY, JSON.stringify(filter));
   },
 };
 

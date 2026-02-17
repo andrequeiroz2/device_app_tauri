@@ -35,3 +35,24 @@ pub fn map_location_db_error(err: &Error) -> String {
     INTERNAL_SERVER_ERROR.to_string()
 }
 
+pub fn map_mqtt_broker_db_error(err: &Error) -> String {
+    if let Error::Database(db_err) = err {
+        if db_err.code().as_deref() == Some("2067") {
+            error!(code = ?db_err.code(), message = %db_err, "mqtt_broker db error: unique constraint");
+
+            let error_msg = db_err.to_string().to_lowercase();
+            if error_msg.contains("name") {
+                return "Broker name already exists".to_string();
+            }
+            if error_msg.contains("host") || error_msg.contains("port") {
+                return "Broker with this host and port already exists".to_string();
+            }
+            return "Broker already exists".to_string();
+        }
+        error!(code = ?db_err.code(), message = %db_err, "mqtt_broker db error");
+    } else {
+        error!(error = %err, "mqtt_broker db error");
+    }
+    INTERNAL_SERVER_ERROR.to_string()
+}
+

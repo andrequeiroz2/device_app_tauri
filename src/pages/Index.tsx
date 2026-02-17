@@ -1,14 +1,10 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { LogIn, UserPlus, Lock } from 'lucide-react';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 const Index = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-secondary/30 px-4 relative">
-      <div className="absolute top-4 right-4">
-        <ThemeToggle />
-      </div>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

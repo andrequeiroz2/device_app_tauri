@@ -77,3 +77,30 @@ fn build_context(claims: &JwtClaims) -> Result<AuthContext, ApiError> {
     })
 }
 
+/// Validates password strength: minimum 6 characters, at least one letter and one number.
+/// Returns Ok(()) if valid, Err with message if invalid.
+#[instrument(skip(password))]
+pub fn validate_password_strength(password: &str) -> Result<(), String> {
+    let password = password.trim();
+    
+    if password.is_empty() {
+        return Err("Password is required".to_string());
+    }
+
+    if password.len() < 6 {
+        return Err("Password must be at least 6 characters".to_string());
+    }
+
+    let has_letter = password.chars().any(|c| c.is_alphabetic());
+    if !has_letter {
+        return Err("Password must contain at least one letter".to_string());
+    }
+
+    let has_number = password.chars().any(|c| c.is_numeric());
+    if !has_number {
+        return Err("Password must contain at least one number".to_string());
+    }
+
+    Ok(())
+}
+

@@ -6,7 +6,7 @@ import { locationApi } from "@/services/locationApi";
 import { useAuth } from "@/context/AuthContext";
 import type { LocationPublic, LocationListResponse, LocationFilter } from "@/types/location";
 import { Button } from "@/components/ui/button";
-import { Loader2, ImageOff } from "lucide-react";
+import { Loader2, ImageOff, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { LocationFilter as LocationFilterPanel } from "@/components/LocationFilter";
 import { storage } from "@/lib/storage";
@@ -117,7 +117,7 @@ const LocationsList = () => {
     <div className="min-h-[60vh]">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-semibold">Locations</h1>
+          <h1 className="text-2xl font-semibold">Location</h1>
           <p className="text-muted-foreground text-sm">List of your locations.</p>
         </div>
         <LocationFilterPanel value={filter} onChange={setFilter} />
@@ -131,8 +131,15 @@ const LocationsList = () => {
       ) : (
         <>
           {items.length === 0 ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground">
-              No locations found.
+            <div className="bg-background border border-border rounded-xl p-12 text-center">
+              <ImageOff className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+              <p className="text-muted-foreground mb-4">No locations found.</p>
+              <Button asChild>
+                <Link to="/locations/create">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create your first location
+                </Link>
+              </Button>
             </div>
           ) : (
             <div className="max-h-[70vh] overflow-y-auto pr-1">

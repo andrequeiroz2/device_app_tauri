@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
 import { ReactNode } from 'react';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -11,9 +10,6 @@ interface AuthLayoutProps {
 export const AuthLayout = ({ children, title, subtitle }: AuthLayoutProps) => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-secondary/30 px-4 py-12 relative">
-      <div className="absolute top-4 right-4">
-        <ThemeToggle />
-      </div>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
