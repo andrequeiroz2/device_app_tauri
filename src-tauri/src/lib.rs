@@ -1,4 +1,6 @@
 pub mod api;
+pub mod collector;
+pub mod tray;
 
 use sqlx::{Pool, Sqlite};
 use api::database::connect_sqlite::get_sqlite_pool;
@@ -547,6 +549,7 @@ async fn change_password(
     }
 }
 
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_tracing();
@@ -554,10 +557,35 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(pool)
         .invoke_handler(tauri::generate_handler![create_user, login, forgot_password, validate_reset_token, reset_password, change_password, create_location, list_locations, delete_location, update_location, get_location, create_mqtt_broker, list_mqtt_brokers, delete_mqtt_broker, get_mqtt_broker, update_mqtt_broker])
+        .on_window_event(|app, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Hide window instead of closing (background mode)
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+                api.prevent_close();
+            }
+        })
         .setup(|app| {
             let handle = app.handle();
+            
+            // Create system tray menu
+            let menu = tray::create_system_tray_menu(&handle)?;
+            
+            // Create and configure tray icon (with custom icon support)
+            let tray_builder = tray::create_system_tray_builder(&handle);
+            let tray_icon = tray_builder
+                .menu(&menu)
+                .on_tray_icon_event(tray::handle_tray_icon_event)
+                .on_menu_event(tray::handle_menu_event)
+                .build(handle)?;
+            
+            // Store tray icon (optional, for future reference)
+            let _tray_icon = tray_icon;
+            
             let key_paths = ensure_keys(&handle)?;
             setup_auth_keys(
                 key_paths.private_key.to_string_lossy().as_ref(),

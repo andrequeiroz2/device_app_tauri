@@ -10,7 +10,7 @@ use crate::api::auth::auth_model::{LoginInput, LoginResponse, AuthConfig, Forgot
 use crate::api::auth::auth_model::{get_auth_config, get_password_reset_config};
 use crate::api::auth::auth_tool::verify_password;
 use crate::api::auth::auth_query::{password_reset_token_create_query, password_reset_token_get_query, password_reset_token_mark_used_query, password_reset_token_count_recent_query, password_reset_token_is_expired_query};
-use crate::api::auth::auth_validator::{validate_password_strength, validate_bearer, AuthContext};
+use crate::api::auth::auth_validator::{validate_password_strength, validate_bearer};
 use crate::api::user::user_query::{user_get_by_email, user_get_by_uuid_query, user_get_by_id_query, user_update_password_query, user_get_by_uuid_with_password_query};
 use crate::api::user::user_model::UserResponseDB;
 use crate::api::user::get_password_hash;

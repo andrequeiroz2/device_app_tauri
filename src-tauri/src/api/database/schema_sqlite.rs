@@ -108,6 +108,23 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
         CREATE INDEX IF NOT EXISTS idx_mqtt_brokers_uuid ON mqtt_brokers(uuid);
         CREATE INDEX IF NOT EXISTS idx_mqtt_brokers_is_default ON mqtt_brokers(user_id, is_default);
 
+        CREATE TABLE IF NOT EXISTS mqtt_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic TEXT NOT NULL,
+            broker_uuid TEXT,
+            device_uuid TEXT,
+            payload TEXT NOT NULL,
+            qos INTEGER DEFAULT 0,
+            retain BOOLEAN DEFAULT FALSE,
+            received_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mqtt_messages_topic ON mqtt_messages(topic);
+        CREATE INDEX IF NOT EXISTS idx_mqtt_messages_broker_uuid ON mqtt_messages(broker_uuid);
+        CREATE INDEX IF NOT EXISTS idx_mqtt_messages_device_uuid ON mqtt_messages(device_uuid);
+        CREATE INDEX IF NOT EXISTS idx_mqtt_messages_broker_device ON mqtt_messages(broker_uuid, device_uuid);
+        CREATE INDEX IF NOT EXISTS idx_mqtt_messages_received_at ON mqtt_messages(received_at);
+
         CREATE TABLE IF NOT EXISTS password_reset_tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             token TEXT NOT NULL UNIQUE,
