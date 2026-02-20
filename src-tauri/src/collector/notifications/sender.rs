@@ -1,76 +1,36 @@
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
-use tracing::{error, warn};
+use tracing::error;
 use crate::collector::notifications::events::NotificationEvent;
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
 
-/// Rate limiter for notifications
-/// Prevents spam by limiting notifications per type
-struct NotificationRateLimiter {
-    last_sent: HashMap<String, Instant>,
-    min_interval: Duration,
-}
-
-impl NotificationRateLimiter {
-    fn new(min_interval_secs: u64) -> Self {
-        Self {
-            last_sent: HashMap::new(),
-            min_interval: Duration::from_secs(min_interval_secs),
-        }
-    }
-
-    fn should_send(&mut self, key: &str) -> bool {
-        let now = Instant::now();
-        if let Some(last) = self.last_sent.get(key) {
-            if now.duration_since(*last) < self.min_interval {
-                return false;
-            }
-        }
-        self.last_sent.insert(key.to_string(), now);
-        true
-    }
-}
-
-/// Notification sender with rate limiting
+/// Notification sender with user-based filtering
 pub struct NotificationSender {
     tx: mpsc::Sender<NotificationEvent>,
-    rate_limiter: std::sync::Mutex<NotificationRateLimiter>,
+    /// Shared reference to current logged-in user. Only events matching this user are sent.
+    current_user_id: Arc<Mutex<Option<i64>>>,
 }
 
 impl NotificationSender {
-    pub fn new() -> (Self, mpsc::Receiver<NotificationEvent>) {
+    /// Creates a new NotificationSender that filters events by current_user_id.
+    /// Only events where event.user_id == current_user_id are forwarded.
+    /// When current_user_id is None (logged out), no events are sent.
+    pub fn new(current_user_id: Arc<Mutex<Option<i64>>>) -> (Self, mpsc::Receiver<NotificationEvent>) {
         let (tx, rx) = mpsc::channel(100);
         let sender = Self {
             tx,
-            rate_limiter: std::sync::Mutex::new(NotificationRateLimiter::new(60)), // 1 minuto
+            current_user_id,
         };
         (sender, rx)
     }
 
-    /// Sends a notification event (with rate limiting)
+    /// Sends a notification event (with user filter)
     pub fn send(&self, event: NotificationEvent) {
-        let key = match &event.notification_type {
-            crate::collector::notifications::events::NotificationType::MqttConnectionLost => {
-                format!("mqtt_lost_{}", event.broker_uuid.as_deref().unwrap_or("unknown"))
+        let current_id = *self.current_user_id.lock().unwrap();
+        if let Some(id) = current_id {
+            if event.user_id != Some(id) {
+                return;
             }
-            crate::collector::notifications::events::NotificationType::MqttConnectionRestored => {
-                format!("mqtt_restored_{}", event.broker_uuid.as_deref().unwrap_or("unknown"))
-            }
-            crate::collector::notifications::events::NotificationType::DeviceOffline => {
-                format!("device_offline_{}", event.device_uuid.as_deref().unwrap_or("unknown"))
-            }
-            crate::collector::notifications::events::NotificationType::CriticalError => {
-                "critical_error".to_string()
-            }
-        };
-
-        let should_send = {
-            let mut limiter = self.rate_limiter.lock().unwrap();
-            limiter.should_send(&key)
-        };
-
-        if !should_send {
-            warn!(key = %key, "Notification rate limited, skipping");
+        } else {
             return;
         }
 
@@ -84,8 +44,7 @@ impl Clone for NotificationSender {
     fn clone(&self) -> Self {
         Self {
             tx: self.tx.clone(),
-            rate_limiter: std::sync::Mutex::new(NotificationRateLimiter::new(60)),
+            current_user_id: Arc::clone(&self.current_user_id),
         }
     }
 }
-

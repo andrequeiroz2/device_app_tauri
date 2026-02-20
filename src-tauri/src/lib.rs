@@ -24,6 +24,17 @@ use api::location::location_model::LocationDeleteInput;
 use api::location::location_model::LocationUpdateInput;
 use api::mqtt_broker::mqtt_broker_handler::{create_mqtt_broker_handler, list_mqtt_brokers_handler, delete_mqtt_broker_handler, get_mqtt_broker_handler, update_mqtt_broker_handler};
 use api::mqtt_broker::mqtt_broker_model::{MqttBrokerCreateInput, MqttBrokerListParams, MqttBrokerDeleteInput, MqttBrokerUpdateInput};
+use api::auth::auth_validator::validate_bearer;
+use api::user::user_query::user_get_by_uuid_query;
+use collector::persistence::query::{
+    count_unread_collector_notifications, get_collector_notification_by_uuid,
+    list_collector_notifications_by_user,
+    mark_all_collector_notifications_read as mark_all_notifications_read_query,
+    mark_collector_notification_read_by_uuid,
+    CollectorNotificationListParams, CollectorNotificationListResponse,
+};
+use collector::service::start_collector;
+use collector::state::{CollectorCommand, CollectorState};
 use tauri::Manager;
 
 
@@ -60,8 +71,8 @@ async fn login(
     payload: LoginInput,
     pool: tauri::State<'_, Pool<Sqlite>>,
     _auth_keys: tauri::State<'_, AuthKeys>,
+    collector_state: tauri::State<'_, CollectorState>,
 ) -> Result<ApiResponse<LoginResponse>, ApiError> {
-
     let request_id = Uuid::new_v4();
     let span = info_span!(
         "login",
@@ -73,13 +84,102 @@ async fn login(
     match login_handler(&payload, &pool).await {
         Ok(data) => {
             info!(request_id = %request_id, uuid = %data.user.uuid, email = %data.user.email, token = %data.token, "login: success");
+
+            if let Ok(user) = user_get_by_uuid_query(&data.user.uuid, &pool).await {
+                if let Err(e) = collector_state
+                    .send_command(CollectorCommand::UserLoggedIn { user_id: user.id })
+                    .await
+                {
+                    error!(request_id = %request_id, error = %e, "login: failed to send UserLoggedIn to collector");
+                }
+            }
+
             Ok(ApiResponse::ok(data))
-        },
+        }
         Err(err) => {
             error!(request_id = %request_id, error = %err, "login: error");
             Err(ApiError::err(err))
         },
     }
+}
+
+#[tauri::command]
+async fn logout(collector_state: tauri::State<'_, CollectorState>) -> Result<ApiResponse<()>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("logout", request_id = %request_id);
+    let _guard = span.enter();
+
+    if let Err(e) = collector_state.send_command(CollectorCommand::UserLoggedOut).await {
+        error!(request_id = %request_id, error = %e, "logout: failed to send UserLoggedOut to collector");
+        return Err(ApiError::err(e));
+    }
+
+    info!(request_id = %request_id, "logout: success");
+    Ok(ApiResponse::ok(()))
+}
+
+#[tauri::command]
+async fn connect_broker(
+    token: String,
+    broker_uuid: String,
+    collector_state: tauri::State<'_, CollectorState>,
+) -> Result<ApiResponse<()>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("connect_broker", request_id = %request_id, broker_uuid = %broker_uuid);
+    let _guard = span.enter();
+
+    validate_bearer(&token)?;
+
+    if let Err(e) = collector_state
+        .send_command(CollectorCommand::ConnectBroker {
+            broker_uuid: broker_uuid.clone(),
+        })
+        .await
+    {
+        error!(request_id = %request_id, error = %e, "connect_broker: failed to send ConnectBroker");
+        return Err(ApiError::err(e));
+    }
+
+    info!(request_id = %request_id, broker_uuid = %broker_uuid, "connect_broker: success");
+    Ok(ApiResponse::ok(()))
+}
+
+#[tauri::command]
+async fn disconnect_broker(
+    token: String,
+    collector_state: tauri::State<'_, CollectorState>,
+) -> Result<ApiResponse<()>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("disconnect_broker", request_id = %request_id);
+    let _guard = span.enter();
+
+    validate_bearer(&token)?;
+
+    if let Err(e) = collector_state.send_command(CollectorCommand::DisconnectBroker).await {
+        error!(request_id = %request_id, error = %e, "disconnect_broker: failed to send DisconnectBroker");
+        return Err(ApiError::err(e));
+    }
+
+    info!(request_id = %request_id, "disconnect_broker: success");
+    Ok(ApiResponse::ok(()))
+}
+
+#[tauri::command]
+async fn get_connected_broker_uuid(
+    token: String,
+    collector_state: tauri::State<'_, CollectorState>,
+) -> Result<ApiResponse<Option<String>>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("get_connected_broker_uuid", request_id = %request_id);
+    let _guard = span.enter();
+
+    validate_bearer(&token)?;
+
+    let uuid = collector_state
+        .get_current_broker()
+        .map(|b| b.uuid);
+
+    Ok(ApiResponse::ok(uuid))
 }
 
 #[tauri::command]
@@ -440,6 +540,158 @@ async fn update_mqtt_broker(
 }
 
 #[tauri::command]
+async fn list_collector_notifications(
+    token: String,
+    params: CollectorNotificationListParams,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<CollectorNotificationListResponse>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("list_collector_notifications", request_id = %request_id);
+    let _guard = span.enter();
+
+    let auth = validate_bearer(&token)?;
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool.inner())
+        .await
+        .map_err(ApiError::err)?;
+    if !user.is_active {
+        return Err(ApiError::err("Unauthorized".to_string()));
+    }
+
+    info!(request_id = %request_id, page = params.page, page_size = params.page_size, is_read = %params.filter.is_read, severity = %params.filter.severity, "list_collector_notifications: params received");
+    match list_collector_notifications_by_user(pool.inner(), user.id, &params).await {
+        Ok(resp) => {
+            info!(request_id = %request_id, count = resp.items.len(), total = resp.total, "list_collector_notifications: success");
+            Ok(ApiResponse::ok(resp))
+        }
+        Err(e) => {
+            error!(request_id = %request_id, error = %e, "list_collector_notifications: error");
+            Err(ApiError::err(e))
+        }
+    }
+}
+
+#[tauri::command]
+async fn get_collector_notification(
+    token: String,
+    uuid: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<
+    ApiResponse<Option<collector::persistence::query::CollectorNotificationRow>>,
+    ApiError,
+> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("get_collector_notification", request_id = %request_id, uuid = %uuid);
+    let _guard = span.enter();
+
+    let auth = validate_bearer(&token)?;
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool.inner())
+        .await
+        .map_err(ApiError::err)?;
+    if !user.is_active {
+        return Err(ApiError::err("Unauthorized".to_string()));
+    }
+
+    match get_collector_notification_by_uuid(pool.inner(), &uuid, user.id).await {
+        Ok(row) => {
+            info!(request_id = %request_id, found = row.is_some(), "get_collector_notification: success");
+            Ok(ApiResponse::ok(row))
+        }
+        Err(e) => {
+            error!(request_id = %request_id, error = %e, "get_collector_notification: error");
+            Err(ApiError::err(e))
+        }
+    }
+}
+
+#[tauri::command]
+async fn mark_collector_notification_read(
+    token: String,
+    uuid: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<()>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("mark_collector_notification_read", request_id = %request_id, uuid = %uuid);
+    let _guard = span.enter();
+
+    let auth = validate_bearer(&token)?;
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool.inner())
+        .await
+        .map_err(ApiError::err)?;
+    if !user.is_active {
+        return Err(ApiError::err("Unauthorized".to_string()));
+    }
+
+    match mark_collector_notification_read_by_uuid(pool.inner(), &uuid, user.id).await {
+        Ok(()) => {
+            info!(request_id = %request_id, "mark_collector_notification_read: success");
+            Ok(ApiResponse::ok(()))
+        }
+        Err(e) => {
+            error!(request_id = %request_id, error = %e, "mark_collector_notification_read: error");
+            Err(ApiError::err(e))
+        }
+    }
+}
+
+#[tauri::command]
+async fn mark_all_collector_notifications_read(
+    token: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<()>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("mark_all_collector_notifications_read", request_id = %request_id);
+    let _guard = span.enter();
+
+    let auth = validate_bearer(&token)?;
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool.inner())
+        .await
+        .map_err(ApiError::err)?;
+    if !user.is_active {
+        return Err(ApiError::err("Unauthorized".to_string()));
+    }
+
+    match mark_all_notifications_read_query(pool.inner(), user.id).await {
+        Ok(()) => {
+            info!(request_id = %request_id, "mark_all_collector_notifications_read: success");
+            Ok(ApiResponse::ok(()))
+        }
+        Err(e) => {
+            error!(request_id = %request_id, error = %e, "mark_all_collector_notifications_read: error");
+            Err(ApiError::err(e))
+        }
+    }
+}
+
+#[tauri::command]
+async fn count_collector_notifications(
+    token: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<i64>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("count_collector_notifications", request_id = %request_id);
+    let _guard = span.enter();
+
+    let auth = validate_bearer(&token)?;
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool.inner())
+        .await
+        .map_err(ApiError::err)?;
+    if !user.is_active {
+        return Err(ApiError::err("Unauthorized".to_string()));
+    }
+
+    match count_unread_collector_notifications(pool.inner(), user.id).await {
+        Ok(n) => {
+            info!(request_id = %request_id, count = n, "count_collector_notifications: success");
+            Ok(ApiResponse::ok(n))
+        }
+        Err(e) => {
+            error!(request_id = %request_id, error = %e, "count_collector_notifications: error");
+            Err(ApiError::err(e))
+        }
+    }
+}
+
+#[tauri::command]
 async fn forgot_password(
     payload: ForgotPasswordInput,
     pool: tauri::State<'_, Pool<Sqlite>>,
@@ -559,7 +811,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .manage(pool)
-        .invoke_handler(tauri::generate_handler![create_user, login, forgot_password, validate_reset_token, reset_password, change_password, create_location, list_locations, delete_location, update_location, get_location, create_mqtt_broker, list_mqtt_brokers, delete_mqtt_broker, get_mqtt_broker, update_mqtt_broker])
+        .invoke_handler(tauri::generate_handler![create_user, login, logout, forgot_password, validate_reset_token, reset_password, change_password, connect_broker, disconnect_broker, get_connected_broker_uuid, create_location, list_locations, delete_location, update_location, get_location, create_mqtt_broker, list_mqtt_brokers, delete_mqtt_broker, get_mqtt_broker, update_mqtt_broker, list_collector_notifications, get_collector_notification, mark_collector_notification_read, mark_all_collector_notifications_read, count_collector_notifications])
         .on_window_event(|app, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Hide window instead of closing (background mode)
@@ -570,29 +822,48 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let handle = app.handle();
-            
+            let handle = app.handle().clone();
+
             // Create system tray menu
             let menu = tray::create_system_tray_menu(&handle)?;
-            
+
             // Create and configure tray icon (with custom icon support)
             let tray_builder = tray::create_system_tray_builder(&handle);
             let tray_icon = tray_builder
                 .menu(&menu)
                 .on_tray_icon_event(tray::handle_tray_icon_event)
                 .on_menu_event(tray::handle_menu_event)
-                .build(handle)?;
-            
+                .build(&handle)?;
+
             // Store tray icon (optional, for future reference)
             let _tray_icon = tray_icon;
-            
+
             let key_paths = ensure_keys(&handle)?;
             setup_auth_keys(
                 key_paths.private_key.to_string_lossy().as_ref(),
                 key_paths.public_key.to_string_lossy().as_ref(),
-            ).map_err(|e| tauri::Error::from(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            )
+            .map_err(|e| tauri::Error::from(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
             let auth_keys = load_keys_to_memory(&key_paths)?;
             app.manage(auth_keys);
+
+            // Collector: start collector (idle state) + notification listener
+            let pool = app.state::<Pool<Sqlite>>().inner().clone();
+            let pool_for_listener = pool.clone();
+            let collector_result = tauri::async_runtime::block_on(start_collector(pool))
+                .map_err(|e| {
+                    tauri::Error::from(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to start collector: {}", e),
+                    ))
+                })?;
+            tray::notification_handler::start_notification_listener(
+                handle.clone(),
+                collector_result.notification_rx,
+                pool_for_listener,
+            );
+            app.manage(collector_result.state);
+
             Ok(())
         })
         .run(tauri::generate_context!())

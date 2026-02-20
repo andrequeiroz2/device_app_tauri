@@ -3,16 +3,23 @@ import { PanelRight, X, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
+import { ConnectDisconnectBrokerButton } from "@/components/ConnectDisconnectBrokerButton";
 
 type MqttBrokerActionsPanelProps = {
   brokerUuid: string;
   isActive: boolean;
+  isConnected: boolean;
+  onConnect: (brokerUuid: string) => Promise<{ success: boolean }>;
+  onDisconnect: () => Promise<{ success: boolean }>;
   onDelete: () => void;
 };
 
 export const MqttBrokerActionsPanel = ({
   brokerUuid,
   isActive,
+  isConnected,
+  onConnect,
+  onDisconnect,
   onDelete,
 }: MqttBrokerActionsPanelProps) => {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -67,9 +74,21 @@ export const MqttBrokerActionsPanel = ({
           <div className="flex-1 p-4 space-y-4">
             <div className="space-y-3">
               {isActive && (
+                <ConnectDisconnectBrokerButton
+                  brokerUuid={brokerUuid}
+                  isActive={isActive}
+                  isConnected={isConnected}
+                  onConnect={onConnect}
+                  onDisconnect={onDisconnect}
+                  variant="default"
+                  size="default"
+                  className="w-full justify-start"
+                />
+              )}
+              {isActive && (
                 <Button
                   asChild
-                  variant="default"
+                  variant="outline"
                   className="w-full justify-start gap-2"
                   onClick={() => setIsPanelOpen(false)}
                 >

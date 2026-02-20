@@ -139,6 +139,23 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
         CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
         CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at ON password_reset_tokens(expires_at);
         CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_created ON password_reset_tokens(user_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS collector_notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT NOT NULL UNIQUE,
+            user_id INTEGER NOT NULL,
+            notification_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            broker_uuid TEXT,
+            device_uuid TEXT,
+            is_read BOOLEAN DEFAULT FALSE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_collector_notifications_user_created ON collector_notifications(user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_collector_notifications_user_read ON collector_notifications(user_id, is_read);
         "#,
     )
         .execute(pool)

@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { mqttBrokerApi } from "@/services/mqttBrokerApi";
 import { useAuth } from "@/context/AuthContext";
+import { useCollectorConnection } from "@/hooks/useCollectorConnection";
+import { ConnectDisconnectBrokerButton } from "@/components/ConnectDisconnectBrokerButton";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -23,6 +25,8 @@ const MqttBrokerDetail = () => {
   const navigate = useNavigate();
   const { token, logout } = useAuth();
   const queryClient = useQueryClient();
+  const { connectedBrokerUuid, connectBroker, disconnectBroker } =
+    useCollectorConnection();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -130,12 +134,24 @@ const MqttBrokerDetail = () => {
         )}
 
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-3">
             <h1 className="text-2xl font-semibold">{broker.name}</h1>
+            {broker.is_active && (
+              <ConnectDisconnectBrokerButton
+                brokerUuid={broker.uuid}
+                isActive={broker.is_active}
+                isConnected={connectedBrokerUuid === broker.uuid}
+                onConnect={connectBroker}
+                onDisconnect={disconnectBroker}
+              />
+            )}
           </div>
           <MqttBrokerActionsPanel
             brokerUuid={broker.uuid}
             isActive={broker.is_active}
+            isConnected={connectedBrokerUuid === broker.uuid}
+            onConnect={connectBroker}
+            onDisconnect={disconnectBroker}
             onDelete={() => setDeleteDialogOpen(true)}
           />
         </div>
@@ -159,7 +175,7 @@ const MqttBrokerDetail = () => {
             <div className="space-y-2">
               <p className="text-sm font-medium text-muted-foreground">Status</p>
               <div className="flex items-center gap-2">
-                {broker.is_connected ? (
+                {connectedBrokerUuid === broker.uuid ? (
                   <>
                     <Wifi className="w-4 h-4 text-green-500" />
                     <span className="text-green-500">Connected</span>

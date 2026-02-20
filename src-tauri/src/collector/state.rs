@@ -11,6 +11,10 @@ pub enum CollectorCommand {
     UserLoggedIn { user_id: i64 },
     /// User logged out - stop monitoring
     UserLoggedOut,
+    /// Connect to a specific broker (disconnects current if any). Broker becomes default.
+    ConnectBroker { broker_uuid: String },
+    /// Disconnect current broker, keep user logged in
+    DisconnectBroker,
 }
 
 /// Shared state for the collector service

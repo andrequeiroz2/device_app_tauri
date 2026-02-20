@@ -115,6 +115,14 @@ export const authApi = {
       return { success: false, message: normalizeMessage(err) };
     }
   },
+
+  async logout(): Promise<void> {
+    try {
+      await invoke<ApiResponse<void>>("logout");
+    } catch (err) {
+      console.error("logout invoke error", err);
+    }
+  },
 };
 
 function normalizeMessage(msg: unknown): string {

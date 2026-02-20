@@ -10,6 +10,27 @@ pub enum NotificationType {
     CriticalError,
 }
 
+impl NotificationType {
+    /// Maps to severity for persistence
+    pub fn as_severity(&self) -> &'static str {
+        match self {
+            NotificationType::MqttConnectionLost => "Warn",
+            NotificationType::MqttConnectionRestored => "Info",
+            NotificationType::DeviceOffline => "Warn",
+            NotificationType::CriticalError => "Critical",
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NotificationType::MqttConnectionLost => "MqttConnectionLost",
+            NotificationType::MqttConnectionRestored => "MqttConnectionRestored",
+            NotificationType::DeviceOffline => "DeviceOffline",
+            NotificationType::CriticalError => "CriticalError",
+        }
+    }
+}
+
 /// Notification event sent from collector to Tauri
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationEvent {

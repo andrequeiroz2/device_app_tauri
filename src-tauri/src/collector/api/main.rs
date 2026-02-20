@@ -53,27 +53,37 @@ pub fn start_api_server_background(pool: Pool<Sqlite>) {
     };
     
     let bind_addr = format!("127.0.0.1:{}", port);
-    
-    info!(bind_addr = %bind_addr, port = port, "Starting HTTP API server");
 
-    actix_web::rt::spawn(async move {
-        let server = HttpServer::new(move || {
-            App::new()
-                .app_data(web::Data::new(pool.clone()))
-                .service(routes::configure_routes())
-        })
-        .bind(&bind_addr);
-        
-        match server {
-            Ok(server) => {
-                info!(bind_addr = %bind_addr, "HTTP API server bound successfully");
-                if let Err(e) = server.run().await {
-                    error!(error = %e, bind_addr = %bind_addr, "HTTP API server error");
+    info!(
+        "Collector HTTP API starting at http://127.0.0.1:{}",
+        port
+    );
+
+    // Run Actix in a dedicated thread with its own runtime to avoid
+    // spawn_local conflict with Tauri's Tokio runtime
+    std::thread::spawn(move || {
+        actix_web::rt::System::new().block_on(async move {
+            let server = HttpServer::new(move || {
+                App::new()
+                    .app_data(web::Data::new(pool.clone()))
+                    .service(routes::configure_routes())
+            })
+            .bind(&bind_addr);
+
+            match server {
+                Ok(server) => {
+                    info!(
+                        "Collector HTTP API running at http://127.0.0.1:{}",
+                        port
+                    );
+                    if let Err(e) = server.run().await {
+                        error!(error = %e, bind_addr = %bind_addr, "HTTP API server error");
+                    }
+                }
+                Err(e) => {
+                    error!(error = %e, bind_addr = %bind_addr, "Failed to bind HTTP API server");
                 }
             }
-            Err(e) => {
-                error!(error = %e, bind_addr = %bind_addr, "Failed to bind HTTP API server");
-            }
-        }
+        });
     });
 }

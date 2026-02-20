@@ -3,6 +3,8 @@ import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { mqttBrokerApi } from "@/services/mqttBrokerApi";
 import { useAuth } from "@/context/AuthContext";
+import { useCollectorConnection } from "@/hooks/useCollectorConnection";
+import { ConnectDisconnectBrokerButton } from "@/components/ConnectDisconnectBrokerButton";
 import type { MqttBrokerPublic, MqttBrokerListResponse, MqttBrokerFilter } from "@/types/mqttBroker";
 import { Button } from "@/components/ui/button";
 import { Loader2, Server, Plus, Wifi, WifiOff } from "lucide-react";
@@ -27,6 +29,11 @@ const MqttBrokersList = () => {
   const { token, logout } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const {
+    connectedBrokerUuid,
+    connectBroker,
+    disconnectBroker,
+  } = useCollectorConnection();
   const [filter, setFilter] = useState<MqttBrokerFilter>({ status: "active" });
   const [inactiveModalOpen, setInactiveModalOpen] = useState(false);
   const [selectedInactiveBroker, setSelectedInactiveBroker] = useState<MqttBrokerPublic | null>(null);
@@ -184,7 +191,7 @@ const MqttBrokersList = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Status:</span>
                         <div className="flex items-center gap-2">
-                          {broker.is_connected ? (
+                          {connectedBrokerUuid === broker.uuid ? (
                             <>
                               <Wifi className="w-4 h-4 text-green-500" />
                               <span className="text-green-500">Connected</span>
@@ -197,6 +204,20 @@ const MqttBrokersList = () => {
                           )}
                         </div>
                       </div>
+                      {broker.is_active && (
+                        <div className="pt-2">
+                          <ConnectDisconnectBrokerButton
+                            brokerUuid={broker.uuid}
+                            isActive={broker.is_active}
+                            isConnected={connectedBrokerUuid === broker.uuid}
+                            onConnect={connectBroker}
+                            onDisconnect={disconnectBroker}
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

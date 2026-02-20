@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Link, useNavigate } from "react-router-do
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { NotificationBell } from "@/components/NotificationBell";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { User, LogOut, Lock } from "lucide-react";
@@ -26,6 +27,8 @@ import Home from "./pages/Home";
 import MqttBrokerCreate from "./pages/MqttBrokerCreate";
 import MqttBrokersList from "./pages/MqttBrokersList";
 import MqttBrokerDetail from "./pages/MqttBrokerDetail";
+import CollectorNotificationsList from "./pages/CollectorNotificationsList";
+import CollectorNotificationDetail from "./pages/CollectorNotificationDetail";
 
 const queryClient = new QueryClient();
 
@@ -110,6 +113,7 @@ const NavBar = () => {
           </nav>
         </div>
         <div className="flex items-center gap-2">
+          <NotificationBell />
           <ThemeToggle />
           <UserMenu />
         </div>
@@ -224,6 +228,22 @@ const App = () => (
                   element={
                     <ProtectedRoute>
                       <MqttBrokerDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/notifications"
+                  element={
+                    <ProtectedRoute>
+                      <CollectorNotificationsList />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/notifications/:uuid"
+                  element={
+                    <ProtectedRoute>
+                      <CollectorNotificationDetail />
                     </ProtectedRoute>
                   }
                 />
