@@ -16,7 +16,7 @@ const PREVIEW_PAGE_SIZE = 5;
 const LIST_PAGE_SIZE = 20;
 
 export function useCollectorNotificationsPreview() {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
 
   return useQuery({
     queryKey: COLLECTOR_NOTIFICATIONS_KEYS.preview(),
@@ -28,7 +28,13 @@ export function useCollectorNotificationsPreview() {
         PREVIEW_PAGE_SIZE,
         { is_read: "no_read", severity: "All" },
       );
-      if (!result.success) throw new Error(result.message ?? "Failed to list notifications");
+      if (!result.success) {
+        if (result.unauthorized) {
+          logout();
+          return [];
+        }
+        throw new Error(result.message ?? "Failed to list notifications");
+      }
       return result.data?.items ?? [];
     },
     enabled: !!token,
@@ -36,7 +42,7 @@ export function useCollectorNotificationsPreview() {
 }
 
 export function useCollectorNotificationsList(filter: CollectorNotificationFilter) {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
 
   return useInfiniteQuery({
     queryKey: COLLECTOR_NOTIFICATIONS_KEYS.list(filter),
@@ -49,7 +55,13 @@ export function useCollectorNotificationsList(filter: CollectorNotificationFilte
         LIST_PAGE_SIZE,
         filter,
       );
-      if (!result.success) throw new Error(result.message ?? "Failed to list notifications");
+      if (!result.success) {
+        if (result.unauthorized) {
+          logout();
+          return { items: [], total: 0, page: 1, page_size: LIST_PAGE_SIZE };
+        }
+        throw new Error(result.message ?? "Failed to list notifications");
+      }
       return (
         result.data ?? { items: [], total: 0, page: 1, page_size: LIST_PAGE_SIZE }
       );
@@ -63,14 +75,20 @@ export function useCollectorNotificationsList(filter: CollectorNotificationFilte
 }
 
 export function useCollectorNotificationsCount() {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
 
   return useQuery({
     queryKey: COLLECTOR_NOTIFICATIONS_KEYS.count(),
     queryFn: async () => {
       if (!token) return 0;
       const result = await collectorNotificationsApi.count(token);
-      if (!result.success) throw new Error(result.message ?? "Failed to count notifications");
+      if (!result.success) {
+        if (result.unauthorized) {
+          logout();
+          return 0;
+        }
+        throw new Error(result.message ?? "Failed to count notifications");
+      }
       return result.data ?? 0;
     },
     enabled: !!token,
@@ -78,14 +96,20 @@ export function useCollectorNotificationsCount() {
 }
 
 export function useCollectorNotification(uuid: string | null) {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
 
   return useQuery({
     queryKey: COLLECTOR_NOTIFICATIONS_KEYS.detail(uuid ?? ""),
     queryFn: async () => {
       if (!token || !uuid) return null;
       const result = await collectorNotificationsApi.get(token, uuid);
-      if (!result.success) throw new Error(result.message ?? "Failed to get notification");
+      if (!result.success) {
+        if (result.unauthorized) {
+          logout();
+          return null;
+        }
+        throw new Error(result.message ?? "Failed to get notification");
+      }
       return result.data ?? null;
     },
     enabled: !!token && !!uuid,
@@ -94,13 +118,19 @@ export function useCollectorNotification(uuid: string | null) {
 
 export function useMarkCollectorNotificationRead() {
   const queryClient = useQueryClient();
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
 
   return useMutation({
     mutationFn: async (uuid: string) => {
       if (!token) throw new Error("Not authenticated");
       const result = await collectorNotificationsApi.markRead(token, uuid);
-      if (!result.success) throw new Error(result.message ?? "Failed to mark as read");
+      if (!result.success) {
+        if (result.unauthorized) {
+          logout();
+          return;
+        }
+        throw new Error(result.message ?? "Failed to mark as read");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: COLLECTOR_NOTIFICATIONS_KEYS.all });
@@ -110,13 +140,19 @@ export function useMarkCollectorNotificationRead() {
 
 export function useMarkAllCollectorNotificationsRead() {
   const queryClient = useQueryClient();
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
 
   return useMutation({
     mutationFn: async () => {
       if (!token) throw new Error("Not authenticated");
       const result = await collectorNotificationsApi.markAllRead(token);
-      if (!result.success) throw new Error(result.message ?? "Failed to mark all as read");
+      if (!result.success) {
+        if (result.unauthorized) {
+          logout();
+          return;
+        }
+        throw new Error(result.message ?? "Failed to mark all as read");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: COLLECTOR_NOTIFICATIONS_KEYS.all });

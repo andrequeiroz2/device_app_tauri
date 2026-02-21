@@ -91,9 +91,9 @@ const CollectorNotificationsList = () => {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="space-y-6"
+      className="flex flex-col h-[calc(100vh-120px)]"
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between shrink-0 pb-4">
         <div>
           <h1 className="text-2xl font-semibold">Notifications</h1>
           <p className="text-muted-foreground text-sm">List of your notifications.</p>
@@ -119,17 +119,17 @@ const CollectorNotificationsList = () => {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center flex-1">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
         </div>
       ) : items.length === 0 ? (
-        <div className="bg-background border border-border rounded-xl p-12 text-center">
-          <Bell className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+        <div className="bg-background border border-border rounded-xl p-12 text-center flex-1 flex flex-col items-center justify-center">
+          <Bell className="w-12 h-12 mb-4 text-muted-foreground" />
           <p className="text-muted-foreground">No notifications.</p>
         </div>
       ) : (
-        <>
-          <div className="space-y-2">
+        <div className="flex-1 overflow-y-auto border border-border rounded-xl">
+          <div className="space-y-2 p-4">
             {items.map((n) => (
               <Link
                 key={n.uuid}
@@ -171,28 +171,28 @@ const CollectorNotificationsList = () => {
                 </div>
               </Link>
             ))}
-          </div>
 
-          {hasNextPage && (
-            <div className="flex justify-center pt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-              >
-                {isFetchingNextPage ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  "Load more"
-                )}
-              </Button>
-            </div>
-          )}
-        </>
+            {hasNextPage && (
+              <div className="flex justify-center pt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    "Load more"
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </motion.div>
   );
