@@ -9,9 +9,9 @@ import type {
 } from "@/types/collectorNotifications";
 
 const IS_READ_OPTIONS: { value: CollectorNotificationIsReadFilter; label: string }[] = [
+  { value: "all", label: "All" },
   { value: "no_read", label: "Not read" },
   { value: "is_read", label: "Read" },
-  { value: "all", label: "All" },
 ];
 
 const SEVERITY_OPTIONS: { value: CollectorNotificationSeverityFilter; label: string }[] = [
@@ -81,7 +81,7 @@ export const CollectorNotificationFilter = ({ value, onChange }: CollectorNotifi
             <button
               type="button"
               onClick={() => setIsFilterExpanded(!isFilterExpanded)}
-              className="w-full flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/70 transition-colors"
+              className="w-full flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent transition-colors"
             >
               <div className="flex items-center gap-2">
                 <Filter className="w-4 h-4" />
@@ -114,20 +114,36 @@ export const CollectorNotificationFilter = ({ value, onChange }: CollectorNotifi
               <div className="mt-2 space-y-4 pl-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Read status</label>
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     {IS_READ_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
                         type="button"
+                        role="radio"
+                        aria-checked={isRead === opt.value}
                         onClick={() => onChange({ ...value, is_read: opt.value })}
                         className={cn(
-                          "w-full text-left px-4 py-2 rounded-lg border text-sm transition-colors hover:bg-muted/70",
+                          "w-full text-left px-4 py-3 rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
                           isRead === opt.value
                             ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-card border-border",
+                            : "bg-card hover:bg-accent border-border",
                         )}
                       >
-                        {opt.label}
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={cn(
+                              "w-4 h-4 rounded-full border-2 flex items-center justify-center",
+                              isRead === opt.value
+                                ? "border-primary-foreground bg-primary-foreground"
+                                : "border-muted-foreground",
+                            )}
+                          >
+                            {isRead === opt.value && (
+                              <div className="w-2 h-2 rounded-full bg-primary" />
+                            )}
+                          </div>
+                          <span className="font-medium">{opt.label}</span>
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -135,20 +151,36 @@ export const CollectorNotificationFilter = ({ value, onChange }: CollectorNotifi
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Severity</label>
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     {SEVERITY_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
                         type="button"
+                        role="radio"
+                        aria-checked={severity === opt.value}
                         onClick={() => onChange({ ...value, severity: opt.value })}
                         className={cn(
-                          "w-full text-left px-4 py-2 rounded-lg border text-sm transition-colors hover:bg-muted/70",
+                          "w-full text-left px-4 py-3 rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
                           severity === opt.value
                             ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-card border-border",
+                            : "bg-card hover:bg-accent border-border",
                         )}
                       >
-                        {opt.label}
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={cn(
+                              "w-4 h-4 rounded-full border-2 flex items-center justify-center",
+                              severity === opt.value
+                                ? "border-primary-foreground bg-primary-foreground"
+                                : "border-muted-foreground",
+                            )}
+                          >
+                            {severity === opt.value && (
+                              <div className="w-2 h-2 rounded-full bg-primary" />
+                            )}
+                          </div>
+                          <span className="font-medium">{opt.label}</span>
+                        </div>
                       </button>
                     ))}
                   </div>

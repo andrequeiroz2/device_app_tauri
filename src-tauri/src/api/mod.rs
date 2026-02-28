@@ -6,4 +6,6 @@ pub mod error;
 pub mod auth;
 pub mod location;
 pub mod mqtt_broker;
+pub mod device;
 pub mod email;
+pub mod sensor_reading;

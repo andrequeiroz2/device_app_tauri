@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { listen } from "@tauri-apps/api/event";
 import { Loader2, Check, CheckCheck, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CollectorNotificationFilter as CollectorNotificationFilterPanel } from "@/components/CollectorNotificationFilter";
@@ -9,10 +10,15 @@ import {
   useCollectorNotificationsCount,
   useMarkCollectorNotificationRead,
   useMarkAllCollectorNotificationsRead,
+  COLLECTOR_NOTIFICATIONS_KEYS,
 } from "@/hooks/useCollectorNotifications";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { CollectorNotificationPublic, CollectorNotificationFilter } from "@/types/collectorNotifications";
+
+const COLLECTOR_NOTIFICATION_ADDED_EVENT = "collector-notification-added";
 
 function formatDate(iso: string): string {
   try {
@@ -47,6 +53,8 @@ const DEFAULT_FILTER: CollectorNotificationFilter = {
 };
 
 const CollectorNotificationsList = () => {
+  const { token } = useAuth();
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<CollectorNotificationFilter>(DEFAULT_FILTER);
   const {
     data,
@@ -58,6 +66,20 @@ const CollectorNotificationsList = () => {
   const { data: unreadCount = 0 } = useCollectorNotificationsCount();
   const markRead = useMarkCollectorNotificationRead();
   const markAllRead = useMarkAllCollectorNotificationsRead();
+
+  // Real-time: invalidate and refetch queries when backend persists a new notification
+  useEffect(() => {
+    if (!token) return;
+    const unlisten = listen(COLLECTOR_NOTIFICATION_ADDED_EVENT, () => {
+      queryClient.invalidateQueries({ 
+        queryKey: COLLECTOR_NOTIFICATIONS_KEYS.all,
+        refetchType: "all",
+      });
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [token, queryClient]);
 
   const items = useMemo(() => {
     if (!data?.pages) return [];

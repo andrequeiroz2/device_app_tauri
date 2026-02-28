@@ -56,3 +56,24 @@ pub fn map_mqtt_broker_db_error(err: &Error) -> String {
     INTERNAL_SERVER_ERROR.to_string()
 }
 
+pub fn map_device_db_error(err: &Error) -> String {
+    if let Error::Database(db_err) = err {
+        if db_err.code().as_deref() == Some("2067") {
+            error!(code = ?db_err.code(), message = %db_err, "device db error: unique constraint");
+
+            let error_msg = db_err.to_string().to_lowercase();
+            if error_msg.contains("name") {
+                return "Device name already exists".to_string();
+            }
+            if error_msg.contains("mac_address") {
+                return "Device with this MAC address already exists".to_string();
+            }
+            return "Device already exists".to_string();
+        }
+        error!(code = ?db_err.code(), message = %db_err, "device db error");
+    } else {
+        error!(error = %err, "device db error");
+    }
+    INTERNAL_SERVER_ERROR.to_string()
+}
+

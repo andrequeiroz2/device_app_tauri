@@ -29,6 +29,9 @@ import MqttBrokersList from "./pages/MqttBrokersList";
 import MqttBrokerDetail from "./pages/MqttBrokerDetail";
 import CollectorNotificationsList from "./pages/CollectorNotificationsList";
 import CollectorNotificationDetail from "./pages/CollectorNotificationDetail";
+import DevicesList from "./pages/DevicesList";
+import DeviceDashboard from "./pages/DeviceDashboard";
+import DeviceAdoptionWizard from "./pages/DeviceAdoptionWizard";
 
 const queryClient = new QueryClient();
 
@@ -106,6 +109,18 @@ const NavBar = () => {
                 <DropdownMenuItem asChild>
                   <Link to="/mqtt-brokers/create" className="w-full">
                     Create
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="hover:text-foreground transition-colors">
+                Devices
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem asChild>
+                  <Link to="/devices/list" className="w-full">
+                    List
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -228,6 +243,30 @@ const App = () => (
                   element={
                     <ProtectedRoute>
                       <MqttBrokerDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/devices/list"
+                  element={
+                    <ProtectedRoute>
+                      <DevicesList />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/devices/:uuid/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <DeviceDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/locations/:uuid/devices/adopt"
+                  element={
+                    <ProtectedRoute>
+                      <DeviceAdoptionWizard />
                     </ProtectedRoute>
                   }
                 />

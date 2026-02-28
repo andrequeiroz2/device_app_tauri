@@ -65,11 +65,14 @@ export function NotificationBell() {
     }
   };
 
-  // Real-time: invalidate queries when backend persists a new notification
+  // Real-time: invalidate and refetch queries when backend persists a new notification
   useEffect(() => {
     if (!token) return;
     const unlisten = listen(COLLECTOR_NOTIFICATION_ADDED_EVENT, () => {
-      queryClient.invalidateQueries({ queryKey: COLLECTOR_NOTIFICATIONS_KEYS.all });
+      queryClient.invalidateQueries({ 
+        queryKey: COLLECTOR_NOTIFICATIONS_KEYS.all,
+        refetchType: "all",
+      });
     });
     return () => {
       unlisten.then((fn) => fn());

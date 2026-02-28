@@ -53,3 +53,7 @@ image = { version = "0.25.9", default-features = false, features = ["png", "jpeg
 
 #datetime
 chrono = { version = "0.4", features = ["serde"] }
+
+# Serial communication (device provisioning)
+tokio-serial = "5.4"
+serialport = "4.3"

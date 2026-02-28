@@ -22,7 +22,7 @@ pub struct StartCollectorResult {
     /// Shared state for sending commands to the collector
     pub state: CollectorState,
     /// Receiver for notification events (for tray listener)
-    pub notification_rx: tokio::sync::mpsc::Receiver<crate::collector::notifications::events::NotificationEvent>,
+    pub notification_rx: std::sync::mpsc::Receiver<crate::collector::notifications::events::NotificationEvent>,
 }
 
 /// Starts the collector in background.

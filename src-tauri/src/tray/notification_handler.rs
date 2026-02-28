@@ -2,7 +2,7 @@ use sqlx::Pool;
 use sqlx::Sqlite;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_notification::NotificationExt;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::collector::notifications::events::NotificationEvent;
 use crate::collector::persistence::query::insert_collector_notification;
@@ -16,10 +16,6 @@ pub async fn handle_notification_event(
     info!(
         notification_type = ?event.notification_type,
         title = %event.title,
-        message = %event.message,
-        timestamp = %event.timestamp,
-        user_id = ?event.user_id,
-        broker_uuid = ?event.broker_uuid,
         "Handling notification event"
     );
 
@@ -40,7 +36,6 @@ pub async fn handle_notification_event(
         .await
         {
             Ok(_) => {
-                // Notify frontend to refresh notification count/list in real time
                 let _ = app.emit("collector-notification-added", ());
             }
             Err(e) => {
@@ -49,20 +44,14 @@ pub async fn handle_notification_event(
         }
     }
 
-    // Show toast in background so handler doesn't block; events are processed promptly
-    // and Restored won't be delayed behind a blocking Lost toast
+    // Show toast in background
     let app = app.clone();
     let title = event.title.clone();
     let message = event.message.clone();
     tauri::async_runtime::spawn(async move {
         let notification = app.notification();
-        match notification.builder().title(&title).body(&message).show() {
-            Ok(_) => {
-                info!(title = %title, "Notification sent successfully");
-            }
-            Err(e) => {
-                error!(error = %e, title = %title, "Failed to send notification");
-            }
+        if let Err(e) = notification.builder().title(&title).body(&message).show() {
+            error!(error = %e, title = %title, "Failed to send notification");
         }
     });
 }
@@ -71,16 +60,16 @@ pub async fn handle_notification_event(
 /// Persists each event to collector_notifications before showing the toast.
 pub fn start_notification_listener(
     app: AppHandle,
-    mut rx: tokio::sync::mpsc::Receiver<NotificationEvent>,
+    rx: std::sync::mpsc::Receiver<NotificationEvent>,
     pool: Pool<Sqlite>,
 ) {
-    tauri::async_runtime::spawn(async move {
+    std::thread::spawn(move || {
         info!("Notification listener started");
 
-        while let Some(event) = rx.recv().await {
-            handle_notification_event(&app, &pool, event).await;
+        while let Ok(event) = rx.recv() {
+            tauri::async_runtime::block_on(handle_notification_event(&app, &pool, event));
         }
 
-        info!("Notification listener stopped");
+        warn!("Notification listener stopped");
     });
 }

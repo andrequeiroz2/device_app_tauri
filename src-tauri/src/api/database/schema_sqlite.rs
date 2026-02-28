@@ -156,6 +156,128 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
         );
         CREATE INDEX IF NOT EXISTS idx_collector_notifications_user_created ON collector_notifications(user_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_collector_notifications_user_read ON collector_notifications(user_id, is_read);
+
+        -- Sensor Types (dynamic, not hardcoded)
+        CREATE TABLE IF NOT EXISTS sensor_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,           -- "DHT11", "BME280", "DS18B20"
+            name TEXT NOT NULL,                  -- "DHT11 Temperature & Humidity"
+            description TEXT,
+            default_scale TEXT,                  -- JSON: [["temperature","C"],["humidity","%"]]
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Actuator Types (dynamic, not hardcoded)
+        CREATE TABLE IF NOT EXISTS actuator_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,           -- "relay", "motor", "led"
+            name TEXT NOT NULL,                  -- "Relay Switch"
+            description TEXT,
+            supported_commands TEXT,             -- JSON: ["ON","OFF"] or ["0-100"]
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Initial sensor types
+        INSERT OR IGNORE INTO sensor_types (code, name, description, default_scale) VALUES
+            ('DHT11', 'DHT11 Temperature & Humidity', 'Low-cost digital temperature and humidity sensor', '[["temperature","C"],["humidity","%"]]'),
+            ('DHT22', 'DHT22 Temperature & Humidity', 'More accurate version of DHT11', '[["temperature","C"],["humidity","%"]]');
+
+        -- Initial actuator types
+        INSERT OR IGNORE INTO actuator_types (code, name, description, supported_commands) VALUES
+            ('RELAY', 'Relay Switch', 'Simple on/off relay module', '["ON","OFF"]'),
+            ('MAGNETIC', 'Magnetic Door/Window Sensor', 'Magnetic contact sensor for doors and windows', '["OPEN","CLOSED"]');
+
+        CREATE TABLE IF NOT EXISTS devices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT NOT NULL UNIQUE,
+            user_id INTEGER NOT NULL,
+            location_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            device_type TEXT NOT NULL CHECK(device_type IN ('actuator', 'sensor')),
+            model TEXT NOT NULL,                    -- Board type: "ESP32", "RP2", "Pyboard"
+            firmware_version TEXT,
+            mac_address TEXT NOT NULL,
+            sensor_type TEXT,                       -- For sensors: "DHT11", "BME280", "DS18B20", etc
+            actuator_type TEXT,                     -- For actuators: "relay", "motor", "led", etc
+            device_scale TEXT,
+            adopted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            operation_status TEXT DEFAULT 'offline' CHECK(operation_status IN ('online', 'offline')),
+            last_seen_at TEXT,
+            ip_address TEXT,
+            publish_qos INTEGER DEFAULT 1 CHECK(publish_qos IN (0, 1, 2)),
+            subscribe_qos INTEGER DEFAULT 1 CHECK(subscribe_qos IN (0, 1, 2)),
+            status_retain BOOLEAN DEFAULT TRUE,
+            data_retain BOOLEAN DEFAULT FALSE,
+            lwt_enabled BOOLEAN DEFAULT TRUE,
+            lwt_message TEXT DEFAULT '{"state":"offline","reason":"unexpected"}',
+            lwt_qos INTEGER DEFAULT 1 CHECK(lwt_qos IN (0, 1, 2)),
+            lwt_retain BOOLEAN DEFAULT TRUE,
+            heartbeat_interval INTEGER DEFAULT 60,
+            offline_threshold INTEGER DEFAULT 300,
+            last_command TEXT,
+            last_command_at TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(location_id) REFERENCES locations(id) ON DELETE CASCADE,
+            UNIQUE(user_id, name),
+            UNIQUE(mac_address)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
+        CREATE INDEX IF NOT EXISTS idx_devices_location_id ON devices(location_id);
+        CREATE INDEX IF NOT EXISTS idx_devices_uuid ON devices(uuid);
+        CREATE INDEX IF NOT EXISTS idx_devices_operation_status ON devices(operation_status);
+        CREATE INDEX IF NOT EXISTS idx_devices_user_location ON devices(user_id, location_id);
+        CREATE INDEX IF NOT EXISTS idx_devices_mac ON devices(mac_address);
+
+        CREATE TRIGGER IF NOT EXISTS trg_devices_updated_at
+        AFTER UPDATE ON devices
+        FOR EACH ROW
+        BEGIN
+            UPDATE devices SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+        END;
+
+        CREATE TABLE IF NOT EXISTS device_commands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id INTEGER NOT NULL,
+            command TEXT NOT NULL,
+            source TEXT DEFAULT 'user',
+            sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            ack_at TEXT,
+            response_ms INTEGER,
+            FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_device_commands_device ON device_commands(device_id);
+        CREATE INDEX IF NOT EXISTS idx_device_commands_sent ON device_commands(sent_at);
+        CREATE INDEX IF NOT EXISTS idx_device_commands_device_sent ON device_commands(device_id, sent_at);
+
+        CREATE TABLE IF NOT EXISTS sensor_readings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id INTEGER NOT NULL,
+            measurement TEXT NOT NULL,           -- "temperature", "humidity", "pressure"
+            value REAL NOT NULL,                 -- 25.5, 60.2, 1013.25
+            scale TEXT NOT NULL,                 -- "C", "%", "hPa"
+            recorded_at TEXT NOT NULL,           -- ISO8601 timestamp from device
+            received_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            
+            FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_readings_device_time 
+            ON sensor_readings(device_id, recorded_at);
+        
+        CREATE INDEX IF NOT EXISTS idx_readings_device_measurement_time 
+            ON sensor_readings(device_id, measurement, recorded_at);
+        
+        CREATE INDEX IF NOT EXISTS idx_readings_time 
+            ON sensor_readings(recorded_at);
         "#,
     )
         .execute(pool)

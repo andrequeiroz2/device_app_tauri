@@ -15,7 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, ImageOff, AlertCircle } from "lucide-react";
+import { Loader2, ImageOff, AlertCircle, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { LocationActionsPanel } from "@/components/LocationActionsPanel";
 
@@ -189,14 +189,27 @@ const LocationDetail = () => {
           <div>
             <h1 className="text-2xl font-semibold">{location.name}</h1>
           </div>
-          <LocationActionsPanel
+          <div className="flex items-center gap-2">
+            {location.is_active && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => navigate(`/locations/${location.uuid}/devices/adopt`)}
+                className="gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Adopt Device
+              </Button>
+            )}
+            <LocationActionsPanel
             locationUuid={location.uuid}
             isActive={location.is_active}
             name={location.name}
             address={location.address}
             description={location.description}
             onDelete={() => setDeleteDialogOpen(true)}
-          />
+            />
+          </div>
         </div>
 
       <div className="border border-border rounded-xl bg-card overflow-hidden">

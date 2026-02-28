@@ -1,5 +1,4 @@
-use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 use tracing::error;
 use crate::collector::notifications::events::NotificationEvent;
 
@@ -15,7 +14,7 @@ impl NotificationSender {
     /// Only events where event.user_id == current_user_id are forwarded.
     /// When current_user_id is None (logged out), no events are sent.
     pub fn new(current_user_id: Arc<Mutex<Option<i64>>>) -> (Self, mpsc::Receiver<NotificationEvent>) {
-        let (tx, rx) = mpsc::channel(100);
+        let (tx, rx) = mpsc::channel();
         let sender = Self {
             tx,
             current_user_id,
@@ -26,6 +25,7 @@ impl NotificationSender {
     /// Sends a notification event (with user filter)
     pub fn send(&self, event: NotificationEvent) {
         let current_id = *self.current_user_id.lock().unwrap();
+        
         if let Some(id) = current_id {
             if event.user_id != Some(id) {
                 return;
@@ -34,8 +34,8 @@ impl NotificationSender {
             return;
         }
 
-        if let Err(e) = self.tx.try_send(event) {
-            error!(error = %e, "Failed to send notification event (channel full or closed)");
+        if let Err(e) = self.tx.send(event) {
+            error!(error = %e, "Failed to send notification event (channel closed)");
         }
     }
 }

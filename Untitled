@@ -1,0 +1,5 @@
+Pontos em aberto para você definir:
+Async ou sync
+Se write_init_config deve criar o arquivo quando não existir
+Encoding no open
+Path do arquivo (/config.json vs config.js
