@@ -1,5 +1,6 @@
 # Tasks
-tasks/
+tasks/  
+embedded/esp/tasks/
 # Logs
 logs
 *.log
