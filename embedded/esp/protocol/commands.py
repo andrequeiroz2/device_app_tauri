@@ -17,6 +17,14 @@ FIRMWARE_VERSION = "1.0.0"
 # Commands that require await in the dispatcher
 ASYNC_COMMANDS = ("set_config",)
 
+# Set to True after successful adoption — checked by main loop to avoid file reads
+_adopted = False
+
+
+def is_adopted():
+    """Return True if set_config completed successfully in this session."""
+    return _adopted
+
 
 def handle_ping(data):
     """Return firmware version."""
@@ -95,6 +103,8 @@ async def handle_set_config(data):
         remove_wifi(ssid)
         return {"ok": False, "error": "Failed to save device config"}
 
+    global _adopted
+    _adopted = True
     log(_MODULE, "handle_set_config", "adoption complete")
     return {"ok": True}
 

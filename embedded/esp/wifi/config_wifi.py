@@ -129,6 +129,7 @@ async def connect(ssid, password, timeout=10):
         await asyncio.sleep(2)
 
     log(_MODULE, "connect", "connecting to ssid='{}'".format(ssid))
+    wlan.config(reconnects=1)  # prevent infinite retry — our loop controls timeout
     wlan.connect(ssid, password)
 
     for _ in range(timeout * 2):

@@ -2,11 +2,14 @@
 Serial handler for embedded firmware.
 Reads JSON commands from UART0 (USB-CDC), dispatches to command handlers,
 writes JSON responses. Non-blocking via select.poll.
+
+Uses sys.stdin/sys.stdout instead of UART(0) because UART0 is already
+initialized by MicroPython's REPL and cannot be re-created.
 """
 
 import json
 import select
-from machine import UART
+import sys
 
 from protocol.commands import (
     handle_ping,
@@ -18,10 +21,8 @@ from protocol.commands import (
 )
 from tool.log import log, log_err
 
-_MODULE   = "serial_handler"
-BAUD_RATE = 115200
+_MODULE = "serial_handler"
 
-_uart = None
 _poll = None
 
 _HANDLERS = {
@@ -35,14 +36,14 @@ _HANDLERS = {
 
 def init():
     """
-    Initialize UART0 at 115200 baud and register with select.poll.
+    Register sys.stdin with select.poll for non-blocking reads.
+    sys.stdin is already connected to UART0 (USB-CDC) by MicroPython.
     Must be called once before poll().
     """
-    global _uart, _poll
-    _uart = UART(0, baudrate=BAUD_RATE)
+    global _poll
     _poll = select.poll()
-    _poll.register(_uart, select.POLLIN)
-    log(_MODULE, "init", "UART ready baud={}".format(BAUD_RATE))
+    _poll.register(sys.stdin, select.POLLIN)
+    log(_MODULE, "init", "serial handler ready via sys.stdin")
 
 
 async def poll():
@@ -51,15 +52,15 @@ async def poll():
     If a line is available, parses and dispatches the command.
     Must be awaited in the main loop on every cycle.
     """
-    if _uart is None:
-        log_err(_MODULE, "poll", "UART not initialized — call init() first")
+    if _poll is None:
+        log_err(_MODULE, "poll", "not initialized — call init() first")
         return
 
     events = _poll.poll(0)
     if not events:
         return
 
-    raw = _uart.readline()
+    raw = sys.stdin.readline()
     if not raw:
         return
 
@@ -118,10 +119,10 @@ async def _handle(raw):
 
 
 def _respond(response):
-    """Serialize response dict as JSON and write to UART with newline terminator."""
+    """Serialize response dict as JSON and write to sys.stdout with newline terminator."""
     try:
         line = json.dumps(response) + "\n"
-        _uart.write(line.encode())
+        sys.stdout.write(line)
         log(_MODULE, "_respond", "sent: {}".format(line.strip()))
     except Exception as e:
         log_err(_MODULE, "_respond", "write error", e)

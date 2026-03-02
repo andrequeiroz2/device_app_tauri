@@ -11,6 +11,7 @@ from machine import Timer, WDT
 
 from config.config           import write_init_config, read_config, AdoptedStatus
 from mqtt.mqtt_client        import connect as mqtt_connect, disconnect as mqtt_disconnect, poll as mqtt_poll, publish_data, publish_status
+from protocol.commands       import is_adopted
 from protocol.serial_handler import init as serial_init, poll as serial_poll
 from sensors.dht             import init as dht_init, read as dht_read
 from tool.log                import log, log_err
@@ -48,8 +49,7 @@ async def _run_config_mode(wdt):
     while True:
         await serial_poll()
 
-        config = read_config()
-        if config and config.get("adopted_status") == AdoptedStatus.ADOPTED:
+        if is_adopted():
             log(_MODULE, "_run_config_mode", "device adopted, switching to operation mode")
             return
 
