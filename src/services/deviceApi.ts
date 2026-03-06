@@ -86,7 +86,7 @@ export const deviceApi = {
     try {
       const resp = await invoke<ApiResponse<DevicePublic>>("get_device", {
         token,
-        device_uuid: uuid,
+        deviceUuid: uuid,
       });
 
       if (!resp.success) {

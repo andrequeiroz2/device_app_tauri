@@ -1,4 +1,4 @@
-use tauri::{Manager, tray::{TrayIconBuilder, TrayIcon, TrayIconEvent}, menu::{Menu, MenuItem, PredefinedMenuItem}, image::Image};
+use tauri::{Manager, Emitter, tray::{TrayIconBuilder, TrayIcon, TrayIconEvent}, menu::{Menu, MenuItem, PredefinedMenuItem}, image::Image};
 use tracing::{info, error, warn};
 use std::fs;
 use std::env;
@@ -164,8 +164,17 @@ pub fn handle_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) 
             }
         }
         "quit" => {
-            info!("Quitting application");
-            app.exit(0);
+            info!("Quit requested — notifying frontend to clear session before exit");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                if let Err(e) = window.emit("app-before-quit", ()) {
+                    error!(error = %e, "Failed to emit app-before-quit event");
+                    app.exit(0);
+                }
+            } else {
+                app.exit(0);
+            }
         }
         _ => {
             error!(menu_id = %id, "Unknown menu item");

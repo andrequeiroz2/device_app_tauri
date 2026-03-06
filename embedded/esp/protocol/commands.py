@@ -28,7 +28,6 @@ def is_adopted():
 
 def handle_ping(data):
     """Return firmware version."""
-    log(_MODULE, "handle_ping", "ping received")
     return {"ok": True, "version": FIRMWARE_VERSION}
 
 
@@ -36,10 +35,8 @@ def handle_get_info(data):
     """Return device identity fields and firmware version."""
     config = read_config()
     if config is None:
-        log_err(_MODULE, "handle_get_info", "could not read config.json")
         return {"ok": False, "error": "Could not read device config"}
 
-    log(_MODULE, "handle_get_info", "returning device info")
     return {
         "ok":               True,
         "adopted_status":   config.get("adopted_status"),
@@ -57,12 +54,10 @@ def handle_get_config(data):
     """Return full config.json content."""
     config = read_config()
     if config is None:
-        log_err(_MODULE, "handle_get_config", "could not read config.json")
         return {"ok": False, "error": "Could not read device config"}
 
     response = dict(config)
     response["ok"] = True
-    log(_MODULE, "handle_get_config", "returning full config")
     return response
 
 

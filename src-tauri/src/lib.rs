@@ -127,6 +127,12 @@ async fn login(
 }
 
 #[tauri::command]
+async fn confirm_quit(app_handle: tauri::AppHandle) {
+    info!("confirm_quit: frontend cleared session — exiting");
+    app_handle.exit(0);
+}
+
+#[tauri::command]
 async fn logout(collector_state: tauri::State<'_, CollectorState>) -> Result<ApiResponse<()>, ApiError> {
     let request_id = Uuid::new_v4();
     let span = info_span!("logout", request_id = %request_id);
@@ -1387,7 +1393,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(pool)
         .invoke_handler(tauri::generate_handler![
-            create_user, login, logout, forgot_password, validate_reset_token, reset_password, change_password,
+            create_user, login, logout, confirm_quit, forgot_password, validate_reset_token, reset_password, change_password,
             connect_broker, disconnect_broker, get_connected_broker_uuid,
             create_location, list_locations, delete_location, update_location, get_location,
             create_mqtt_broker, list_mqtt_brokers, delete_mqtt_broker, get_mqtt_broker, update_mqtt_broker,

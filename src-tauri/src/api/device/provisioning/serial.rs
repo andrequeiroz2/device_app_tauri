@@ -1,16 +1,16 @@
 use serde::{Deserialize, Serialize};
-use serialport::SerialPortType;
+use serialport::{ClearBuffer, SerialPort, SerialPortType};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::time::timeout;
 use tokio_serial::SerialPortBuilderExt;
-use tracing::{debug, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use super::error::ProvisioningError;
 
 // Configuration constants
 const DEFAULT_BAUD_RATE: u32 = 115200;
-const READ_TIMEOUT_MS: u64 = 5000;
+const READ_TIMEOUT_MS: u64 = 10000;
 const WRITE_TIMEOUT_MS: u64 = 2000;
 const MAX_RESPONSE_SIZE: usize = 4096;
 
@@ -72,18 +72,34 @@ pub struct SerialConnection {
 pub const BAUDRATES: [u32; 8] = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 
 impl SerialConnection {
-    /// Open a connection to the specified serial port
-    #[instrument(skip_all, fields(port = %port_name, baud = baud_rate))]
-    pub async fn open(port_name: &str, baud_rate: u32) -> Result<Self, ProvisioningError> {
+    /// Open a connection to the specified serial port.
+    /// If `avoid_reset` is true, DTR is set to false immediately after opening to avoid
+    /// resetting the ESP32 (e.g. when reconnecting after an intentional reset).
+    #[instrument(skip_all, fields(port = %port_name, baud = baud_rate, avoid_reset))]
+    pub async fn open(
+        port_name: &str,
+        baud_rate: u32,
+        avoid_reset: bool,
+    ) -> Result<Self, ProvisioningError> {
         debug!("opening serial connection");
 
-        let port = tokio_serial::new(port_name, baud_rate)
+        let mut port = tokio_serial::new(port_name, baud_rate)
             .timeout(Duration::from_millis(READ_TIMEOUT_MS))
             .open_native_async()
             .map_err(|e| {
                 warn!(error = %e, "failed to open serial port");
                 ProvisioningError::ConnectionFailed(e.to_string())
             })?;
+
+        if avoid_reset {
+            if let Err(e) = port.write_data_terminal_ready(false) {
+                warn!(error = %e, "failed to set DTR=false (device may reset)");
+            }
+        }
+
+        if let Err(e) = port.clear(ClearBuffer::Input) {
+            warn!(error = %e, "failed to clear serial input buffer (continuing anyway)");
+        }
 
         let (reader, writer) = tokio::io::split(port);
 
@@ -144,19 +160,37 @@ impl SerialConnection {
             Ok::<(), std::io::Error>(())
         })
         .await
-        .map_err(|_| ProvisioningError::ReadTimeout)?
+        .map_err(|e| {
+            warn!(error = %e, "serial: read timeout — no line received from device");
+            ProvisioningError::ReadTimeout
+        })?
         .map_err(|e| ProvisioningError::ReadError(e.to_string()))?;
 
         let response = response.trim().to_string();
-        debug!(len = response.len(), "read line from device");
+        info!(len = response.len(), line = %response, "serial: read line from device");
         Ok(response)
     }
 
-    /// Send a command and read the response
+    /// Send a command and read the response.
+    /// Skips non-JSON lines and local echo of our command (which has "cmd") until we get the device response.
     #[instrument(skip(self, data), fields(port = %self.port_name))]
     pub async fn send_receive(&mut self, data: &str) -> Result<String, ProvisioningError> {
         self.write_line(data).await?;
-        self.read_line().await
+        info!(cmd = data, "serial: waiting for JSON response");
+        loop {
+            let line = self.read_line().await?;
+            if !line.starts_with('{') || !line.ends_with('}') {
+                info!(skipped = %line, "serial: skipping non-JSON line");
+                continue;
+            }
+            // Skip echo of our own command (contains "cmd"); device response has "ok" not "cmd"
+            if line.contains("\"cmd\"") {
+                info!(skipped = %line, "serial: skipping echo of our command");
+                continue;
+            }
+            info!(response = %line, "serial: received JSON from device");
+            return Ok(line);
+        }
     }
 
     /// Get the port name

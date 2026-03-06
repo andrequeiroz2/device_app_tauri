@@ -21,9 +21,11 @@ from protocol.commands import (
 )
 from tool.log import log, log_err
 
-_MODULE = "serial_handler"
+_MODULE   = "serial_handler"
+_MAX_LINE = 1024  # max chars per line to avoid memory exhaustion
 
-_poll = None
+_poll        = None
+_line_buffer = ""  # incomplete line across poll() calls
 
 _HANDLERS = {
     "ping":       handle_ping,
@@ -46,21 +48,51 @@ def init():
     log(_MODULE, "init", "serial handler ready via sys.stdin")
 
 
+def _readline_nonblock():
+    """
+    Read a line from stdin without blocking.
+    MicroPython select.poll + sys.stdin: readline()/read() block even when
+    poll() indicates data is ready (see micropython/micropython#16550).
+    Workaround: read(1) per character; buffer incomplete lines across calls.
+    Returns complete line (without \\n) or None.
+    """
+    global _line_buffer
+    while True:
+        events = _poll.poll(0)
+        if not events:
+            return None
+        c = sys.stdin.read(1)
+        if not c:
+            result = _line_buffer
+            _line_buffer = ""
+            return result if result else None
+        if c == "\n" or c == "\r":
+            result = _line_buffer
+            _line_buffer = ""
+            return result
+        _line_buffer += c
+        if len(_line_buffer) > _MAX_LINE:
+            _line_buffer = ""
+            return None
+
+
 async def poll():
     """
     Non-blocking check for incoming serial data.
-    If a line is available, parses and dispatches the command.
+    If a complete line is available, parses and dispatches the command.
+    Uses read(1) loop instead of readline() due to MicroPython poll+stdin limitation.
     Must be awaited in the main loop on every cycle.
     """
     if _poll is None:
         log_err(_MODULE, "poll", "not initialized — call init() first")
         return
 
+    # Poll first — avoid building line when no data
     events = _poll.poll(0)
     if not events:
         return
 
-    raw = sys.stdin.readline()
+    raw = _readline_nonblock()
     if not raw:
         return
 
@@ -68,20 +100,18 @@ async def poll():
 
 
 async def _handle(raw):
-    """Parse a raw bytes line, dispatch to the correct handler, write response."""
+    """Parse a raw string line, dispatch to the correct handler, write response.
+    Regra de ouro: o único dado saindo pela serial deve ser o JSON de resposta.
+    Sem log/print aqui — interferem no parse do host."""
     try:
-        line = raw.decode().strip()
-    except Exception as e:
-        log_err(_MODULE, "_handle", "decode error", e)
+        line = raw.strip() if isinstance(raw, str) else raw.decode().strip()
+    except Exception:
         _respond({"ok": False, "error": "Decode error"})
         return
 
-    log(_MODULE, "_handle", "received: {}".format(line))
-
     try:
         msg = json.loads(line)
-    except ValueError as e:
-        log_err(_MODULE, "_handle", "JSON parse error | raw='{}'".format(line), e)
+    except ValueError:
         _respond({"ok": False, "error": "Invalid JSON"})
         return
 
@@ -89,25 +119,20 @@ async def _handle(raw):
     data = msg.get("data")
 
     if not cmd:
-        log_err(_MODULE, "_handle", "missing 'cmd' field")
         _respond({"ok": False, "error": "Missing cmd field"})
         return
 
     handler = _HANDLERS.get(cmd)
     if handler is None:
-        log_err(_MODULE, "_handle", "unknown cmd='{}'".format(cmd))
         _respond({"ok": False, "error": "Unknown command: {}".format(cmd)})
         return
-
-    log(_MODULE, "_handle", "dispatching cmd='{}'".format(cmd))
 
     try:
         if cmd in ASYNC_COMMANDS:
             result = await handler(data)
         else:
             result = handler(data)
-    except Exception as e:
-        log_err(_MODULE, "_handle", "handler exception cmd='{}'".format(cmd), e)
+    except Exception:
         _respond({"ok": False, "error": "Internal error"})
         return
 
@@ -119,10 +144,14 @@ async def _handle(raw):
 
 
 def _respond(response):
-    """Serialize response dict as JSON and write to sys.stdout with newline terminator."""
+    """Serialize and send JSON to host.
+    Regra do protocolo: cada mensagem JSON termina com \\n.
+    flush() garante envio imediato (MicroPython print nao suporta flush=True).
+    """
     try:
-        line = json.dumps(response) + "\n"
-        sys.stdout.write(line)
-        log(_MODULE, "_respond", "sent: {}".format(line.strip()))
+        import time
+        time.sleep_ms(50)  # let USB rx settle before tx
+        sys.stdout.write(json.dumps(response) + "\n")
+        sys.stdout.flush()
     except Exception as e:
         log_err(_MODULE, "_respond", "write error", e)

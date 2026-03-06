@@ -72,7 +72,9 @@ pub struct DeviceInfoInput {
 /// Callback type for emitting log lines during provisioning (for real-time SerialConsole)
 pub type ProvisioningLogEmitter = Arc<dyn Fn(&str) + Send + Sync>;
 
-/// Probe a device: connect, ping, get_info
+/// Probe a device: connect, ping, get_info.
+/// Fast path first: tenta conexão direta (sem reset) — funciona quando main.py já está rodando.
+/// Se falhar: faz reset via DTR, espera boot, reconecta e tenta novamente.
 #[instrument(skip_all, fields(port = %input.port, baud = input.baud_rate))]
 pub async fn probe_device(
     input: ProbeDeviceInput,
@@ -86,27 +88,97 @@ pub async fn probe_device(
         }
     };
 
-    emit("Opening serial connection...");
-    let conn = SerialConnection::open(&input.port, input.baud_rate)
-        .await
-        .map_err(|e| map_provisioning_error(&e))?;
-    emit("Connected. Sending ping...");
+    const MAX_RETRIES: u32 = 4;
+    const BACKOFF_BASE_MS: u64 = 1000;
 
-    let mut protocol = DeviceProtocol::new(conn);
+    let mut last_error = String::new();
+    let (ping_response, device_info) = 'retry: loop {
+        let do_reset = !last_error.is_empty();
+        if do_reset {
+            emit("Opening serial connection (reset)...");
+            let conn = SerialConnection::open(&input.port, input.baud_rate, false)
+                .await
+                .map_err(|e| map_provisioning_error(&e))?;
+            drop(conn);
+            emit("Waiting for device to boot...");
+            tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+        } else {
+            emit("Opening serial connection...");
+        }
 
-    let ping_response = protocol.ping().await.map_err(|e| map_provisioning_error(&e))?;
-    emit(&format!(
-        "Ping OK (version: {})",
-        ping_response.version.as_deref().unwrap_or("unknown")
-    ));
+        for attempt in 0..MAX_RETRIES {
+            if attempt > 0 {
+                let delay_ms = BACKOFF_BASE_MS * attempt as u64;
+                emit(&format!("Retrying in {}s... (attempt {}/{})", delay_ms / 1000, attempt + 1, MAX_RETRIES));
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            }
 
-    debug!(version = ?ping_response.version, "device is compatible");
+            emit(if attempt == 0 && !do_reset {
+                "Sending ping..."
+            } else if attempt == 0 {
+                "Reconnecting..."
+            } else {
+                "Reconnecting (retry)..."
+            });
+            let conn = match SerialConnection::open(&input.port, input.baud_rate, true).await {
+                Ok(c) => c,
+                Err(e) => {
+                    last_error = map_provisioning_error(&e);
+                    if attempt + 1 >= MAX_RETRIES {
+                        if !do_reset {
+                            continue 'retry; // tenta com reset (last_error preenchido => do_reset=true)
+                        }
+                        return Err(last_error.clone());
+                    }
+                    continue;
+                }
+            };
 
-    emit("Requesting device info...");
-    let device_info = protocol
-        .get_info()
-        .await
-        .map_err(|e| map_provisioning_error(&e))?;
+            let mut protocol = DeviceProtocol::new(conn);
+
+            if attempt > 0 || do_reset {
+                emit("Sending ping...");
+            }
+            let ping_response = match protocol.ping().await {
+                Ok(r) => r,
+                Err(e) => {
+                    last_error = map_provisioning_error(&e);
+                    drop(protocol);
+                    if attempt + 1 >= MAX_RETRIES {
+                        if !do_reset {
+                            continue 'retry; // tenta com reset
+                        }
+                        return Err(last_error.clone());
+                    }
+                    continue;
+                }
+            };
+            emit(&format!(
+                "Ping OK (version: {})",
+                ping_response.version.as_deref().unwrap_or("unknown")
+            ));
+
+            debug!(version = ?ping_response.version, "device is compatible");
+
+            emit("Requesting device info...");
+            let device_info = match protocol.get_info().await {
+                Ok(i) => i,
+                Err(e) => {
+                    last_error = map_provisioning_error(&e);
+                    drop(protocol);
+                    if attempt + 1 >= MAX_RETRIES {
+                        if !do_reset {
+                            continue 'retry;
+                        }
+                        return Err(last_error.clone());
+                    }
+                    continue;
+                }
+            };
+            break 'retry (ping_response, device_info);
+        }
+    };
+
     emit(&format!(
         "Device: {} {} - MAC: {}",
         device_info.device_type,
@@ -163,7 +235,7 @@ pub async fn adopt_device(
     validate_adopt_input_with_broker(&input, &broker_url)?;
 
     emit("Opening serial connection...");
-    let conn = SerialConnection::open(&input.port, input.baud_rate)
+    let conn = SerialConnection::open(&input.port, input.baud_rate, true)
         .await
         .map_err(|e| map_provisioning_error(&e))?;
     emit("Connected. Verifying device...");

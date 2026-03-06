@@ -19,9 +19,10 @@ pub async fn device_post_query(
         INSERT INTO devices (
             uuid, user_id, location_id, name, description,
             device_type, model, mac_address, firmware_version,
-            sensor_type, actuator_type, device_scale
+            sensor_type, actuator_type, device_scale,
+            adopted_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, CURRENT_TIMESTAMP)
         RETURNING
             id, uuid, user_id, location_id, name, description, device_type,
             model, firmware_version, mac_address, sensor_type, actuator_type, device_scale,

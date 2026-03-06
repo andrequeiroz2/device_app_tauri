@@ -15,8 +15,6 @@ from tool.write import write_json
 WIFI_FILE = "/wifi.json"
 _MODULE   = "config_wifi"
 
-_INIT_ENTRY = {"ssid": "", "pass": "", "default": False}
-
 
 # --- Private helpers ---
 
@@ -58,19 +56,19 @@ def write_init_config():
     """
     if not file_exists(WIFI_FILE):
         log(_MODULE, "write_init_config", "wifi.json not found, creating")
-        return write_json(WIFI_FILE, {"wifi": [_INIT_ENTRY]})
+        return write_json(WIFI_FILE, {"wifi": []})
 
     config = read_json(WIFI_FILE)
     if config is None:
         log_err(_MODULE, "write_init_config", "wifi.json exists but is unreadable, recreating")
-        return write_json(WIFI_FILE, {"wifi": [_INIT_ENTRY]})
+        return write_json(WIFI_FILE, {"wifi": []})
 
     if "wifi" in config and isinstance(config["wifi"], list):
         log(_MODULE, "write_init_config", "wifi.json already initialized")
         return True
 
     log(_MODULE, "write_init_config", "wifi.json has invalid structure, recreating")
-    return write_json(WIFI_FILE, {"wifi": [_INIT_ENTRY]})
+    return write_json(WIFI_FILE, {"wifi": []})
 
 
 def add_wifi(ssid, password):

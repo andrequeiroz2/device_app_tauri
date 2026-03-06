@@ -6,6 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Link, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -137,6 +139,28 @@ const NavBar = () => {
   );
 };
 
+const AppQuitHandler = () => {
+  const { logout } = useAuth();
+
+  useEffect(() => {
+    const unlisten = listen("app-before-quit", async () => {
+      try {
+        logout();
+      } catch {
+        // ignore logout errors — app is closing anyway
+      } finally {
+        await invoke("confirm_quit");
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [logout]);
+
+  return null;
+};
+
 const DeepLinkHandler = () => {
   const navigate = useNavigate();
 
@@ -169,6 +193,7 @@ const App = () => (
           <Toaster />
       <Sonner position="top-center" />
       <BrowserRouter>
+            <AppQuitHandler />
             <DeepLinkHandler />
             <div className="min-h-screen bg-background text-foreground">
               <NavBar />
