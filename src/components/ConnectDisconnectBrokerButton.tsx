@@ -50,7 +50,7 @@ export function ConnectDisconnectBrokerButton({
       size={size}
       onClick={handleClick}
       disabled={disabled}
-      className={cn("gap-2", className)}
+      className={cn("gap-2 w-[8.5rem] justify-center", className)}
     >
       {isLoading ? (
         <Loader2 className="w-4 h-4 animate-spin" />

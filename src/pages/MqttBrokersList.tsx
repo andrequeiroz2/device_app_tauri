@@ -1,13 +1,14 @@
 import { useMemo, useState, useEffect } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { mqttBrokerApi } from "@/services/mqttBrokerApi";
 import { useAuth } from "@/context/AuthContext";
 import { useCollectorConnection } from "@/hooks/useCollectorConnection";
 import { ConnectDisconnectBrokerButton } from "@/components/ConnectDisconnectBrokerButton";
 import type { MqttBrokerPublic, MqttBrokerListResponse, MqttBrokerFilter } from "@/types/mqttBroker";
 import { Button } from "@/components/ui/button";
-import { Loader2, Server, Plus, Wifi, WifiOff } from "lucide-react";
+import { Loader2, Server, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { MqttBrokerFilter as MqttBrokerFilterPanel } from "@/components/MqttBrokerFilter";
 import { storage } from "@/lib/storage";
@@ -121,129 +122,148 @@ const MqttBrokersList = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Broker</h1>
-          <p className="text-muted-foreground text-sm">
-            List of your MQTT brokers.
-          </p>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="flex flex-col h-[calc(100vh-120px)]"
+    >
+      <div className="flex items-center justify-between shrink-0 pb-4">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/")}
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-semibold">Broker</h1>
+            <p className="text-muted-foreground text-sm">
+              List of your MQTT brokers.
+            </p>
+          </div>
         </div>
         <MqttBrokerFilterPanel value={filter} onChange={setFilter} />
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center flex-1">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
         </div>
+      ) : items.length === 0 ? (
+        <div className="bg-background border border-border rounded-xl p-12 text-center flex-1 flex flex-col items-center justify-center">
+          <Server className="w-12 h-12 mb-4 text-muted-foreground" />
+          <p className="text-muted-foreground mb-4">No brokers found.</p>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/mqtt-brokers/create">
+              Create your first broker
+            </Link>
+          </Button>
+        </div>
       ) : (
-        <>
-          {items.length === 0 ? (
-            <div className="bg-background border border-border rounded-xl p-12 text-center">
-              <Server className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground mb-4">No brokers found.</p>
-              <Button asChild>
-                <Link to="/mqtt-brokers/create">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create your first broker
-                </Link>
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {items.map((broker) => (
-                  <div
+        <div className="flex-1 overflow-y-auto border border-border rounded-xl">
+          <div className="space-y-2 p-4">
+            {items.map((broker) => {
+              if (broker.is_active) {
+                return (
+                  <Link
                     key={broker.uuid}
-                    onClick={(e) => {
-                      if (broker.is_active) {
-                        navigate(`/mqtt-brokers/${broker.uuid}`);
-                      } else {
-                        handleCardClick(broker, e);
-                      }
-                    }}
-                    className={cn(
-                      "bg-background border border-border rounded-xl p-6 hover:border-primary transition-colors cursor-pointer",
-                      !broker.is_active && "opacity-60 grayscale"
-                    )}
+                    to={`/mqtt-brokers/${broker.uuid}`}
+                    className="block rounded-lg border p-4 transition-colors hover:bg-muted/50"
                   >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold">{broker.name}</h3>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Host:</span>
-                        <span className="font-mono">{broker.host}:{broker.port}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">TLS:</span>
-                        <span>{broker.use_tls ? "Yes" : "No"}</span>
-                      </div>
-                      {broker.is_default && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Default:</span>
-                          <span className="text-primary">Yes</span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Status:</span>
-                        <div className="flex items-center gap-2">
-                          {connectedBrokerUuid === broker.uuid ? (
-                            <>
-                              <Wifi className="w-4 h-4 text-green-500" />
-                              <span className="text-green-500">Connected</span>
-                            </>
-                          ) : (
-                            <>
-                              <WifiOff className="w-4 h-4 text-muted-foreground" />
-                              <span className="text-muted-foreground">Disconnected</span>
-                            </>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium">{broker.name}</span>
+                          {broker.is_default && (
+                            <span className="text-xs px-2 py-0.5 rounded font-medium bg-primary/20 text-primary">
+                              Default
+                            </span>
                           )}
                         </div>
+                        <p className="mt-1 text-sm text-muted-foreground font-mono">
+                          {broker.host}:{broker.port}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          TLS: {broker.use_tls ? "Yes" : "No"}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {connectedBrokerUuid === broker.uuid ? (
+                            <span className="text-green-500">Connected</span>
+                          ) : (
+                            <span>Disconnected</span>
+                          )}
+                        </p>
                       </div>
-                      {broker.is_active && (
-                        <div className="pt-2">
-                          <ConnectDisconnectBrokerButton
-                            brokerUuid={broker.uuid}
-                            isActive={broker.is_active}
-                            isConnected={connectedBrokerUuid === broker.uuid}
-                            onConnect={connectBroker}
-                            onDisconnect={disconnectBroker}
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                          />
-                        </div>
-                      )}
+                      <div
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                      >
+                        <ConnectDisconnectBrokerButton
+                          brokerUuid={broker.uuid}
+                          isActive={broker.is_active}
+                          isConnected={connectedBrokerUuid === broker.uuid}
+                          onConnect={connectBroker}
+                          onDisconnect={disconnectBroker}
+                          variant="outline"
+                          size="sm"
+                        />
+                      </div>
+                    </div>
+                  </Link>
+                );
+              }
+              return (
+                <div
+                  key={broker.uuid}
+                  onClick={(e) => handleCardClick(broker, e)}
+                  className={cn(
+                    "block rounded-lg border p-4 transition-colors hover:bg-muted/50 cursor-pointer",
+                    "bg-muted/30 border-l-4 border-l-amber-500/50"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium">{broker.name}</span>
+                        <span className="text-xs px-2 py-0.5 rounded font-medium bg-muted text-muted-foreground">
+                          Inactive
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground font-mono">
+                        {broker.host}:{broker.port}
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
-
-              {hasNextPage && (
-                <div className="flex justify-center pt-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => fetchNextPage()}
-                    disabled={isFetchingNextPage}
-                  >
-                    {isFetchingNextPage ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Loading...
-                      </>
-                    ) : (
-                      "Load More"
-                    )}
-                  </Button>
                 </div>
-              )}
-            </>
-          )}
-        </>
+              );
+            })}
+
+            {hasNextPage && (
+              <div className="flex justify-center pt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    "Load more"
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <AlertDialog open={inactiveModalOpen} onOpenChange={setInactiveModalOpen}>
@@ -272,7 +292,7 @@ const MqttBrokersList = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </motion.div>
   );
 };
 

@@ -71,6 +71,37 @@
     --input: 222 47% 18%;
     --ring: 220 14% 96%;
   }
+
+  /* Dark Light: softer dark theme */
+  .dark-light {
+    --background: 222 30% 14%;
+    --foreground: 220 14% 92%;
+
+    --card: 222 30% 18%;
+    --card-foreground: 220 14% 92%;
+
+    --popover: 222 30% 18%;
+    --popover-foreground: 220 14% 92%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 222 30% 22%;
+    --secondary-foreground: 220 14% 92%;
+
+    --muted: 222 30% 22%;
+    --muted-foreground: 220 9% 65%;
+
+    --accent: 217 91% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62% 35%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 30% 25%;
+    --input: 222 30% 25%;
+    --ring: 220 14% 92%;
+  }
 }
 
 @layer base {

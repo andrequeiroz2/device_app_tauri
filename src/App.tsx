@@ -188,7 +188,13 @@ const DeepLinkHandler = () => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        value={{ light: "light", dark: "dark", "dark-light": "dark-light" }}
+        themes={["light", "dark", "dark-light", "system"]}
+      >
     <TooltipProvider>
           <Toaster />
       <Sonner position="top-center" />

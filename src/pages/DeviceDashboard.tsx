@@ -7,7 +7,13 @@ import { SensorChart } from "@/components/dashboard/SensorChart";
 import { CurrentValueCard } from "@/components/dashboard/CurrentValueCard";
 import { ActuatorChart } from "@/components/dashboard/ActuatorChart";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ArrowLeft, Loader2, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import type { DevicePublic } from "@/types/device";
 
@@ -143,7 +149,7 @@ export default function DeviceDashboard() {
             ? queryError.message
             : "Device not found"}
         </p>
-        <Button variant="outline" onClick={() => navigate(-1)}>
+        <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
@@ -157,33 +163,44 @@ export default function DeviceDashboard() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link to="/">
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/")}
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">{device.name}</h1>
+            <h1 className="text-2xl font-semibold">{device.name}</h1>
             <p className="text-sm text-muted-foreground">
               {device.model} • {device.device_type}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="period" className="text-sm text-muted-foreground">
-            Period:
-          </label>
-          <select
-            id="period"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as PeriodFilter)}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="today">Today</option>
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-          </select>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Calendar className="w-4 h-4" />
+              {period === "today"
+                ? "Today"
+                : period === "7d"
+                  ? "Last 7 days"
+                  : "Last 30 days"}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => setPeriod("today")}>
+              Today
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setPeriod("7d")}>
+              Last 7 days
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setPeriod("30d")}>
+              Last 30 days
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {isSensor ? (

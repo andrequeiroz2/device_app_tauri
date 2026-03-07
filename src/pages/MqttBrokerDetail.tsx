@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Wifi, WifiOff, AlertCircle } from "lucide-react";
+import { Loader2, Wifi, WifiOff, AlertCircle, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { MqttBrokerActionsPanel } from "@/components/MqttBrokerActionsPanel";
 
@@ -114,6 +114,18 @@ const MqttBrokerDetail = () => {
 
   const isInactive = !broker.is_active;
 
+  const formatDate = (iso: string | null | undefined) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+    } catch {
+      return iso;
+    }
+  };
+
   return (
     <>
       <div className="space-y-4">
@@ -134,8 +146,17 @@ const MqttBrokerDetail = () => {
         )}
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{broker.name}</h1>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/mqtt-brokers/list")}
+              aria-label="Back"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold">{broker.name}</h1>
             {broker.is_active && (
               <ConnectDisconnectBrokerButton
                 brokerUuid={broker.uuid}
@@ -145,6 +166,7 @@ const MqttBrokerDetail = () => {
                 onDisconnect={disconnectBroker}
               />
             )}
+            </div>
           </div>
           <MqttBrokerActionsPanel
             brokerUuid={broker.uuid}
@@ -156,50 +178,154 @@ const MqttBrokerDetail = () => {
           />
         </div>
 
-        <div className="border border-border rounded-xl bg-card p-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="border border-border rounded-xl bg-card p-6 space-y-6">
+          {broker.description && (
             <div className="space-y-2">
-              <p className="text-sm font-medium text-muted-foreground">Host</p>
-              <p className="font-mono text-sm">{broker.host}:{broker.port}</p>
+              <p className="text-sm font-medium text-muted-foreground">Description</p>
+              <p className="text-sm">{broker.description}</p>
             </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-muted-foreground">TLS</p>
-              <p>{broker.use_tls ? "Yes" : "No"}</p>
-            </div>
-            {broker.username && (
+          )}
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Host</p>
+                <p className="font-mono text-sm">{broker.host}:{broker.port}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">TLS</p>
+                <p>{broker.use_tls ? "Yes" : "No"}</p>
+              </div>
               <div className="space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">Username</p>
-                <p>{broker.username}</p>
+                <p>{broker.username ?? "—"}</p>
               </div>
-            )}
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-muted-foreground">Status</p>
-              <div className="flex items-center gap-2">
-                {connectedBrokerUuid === broker.uuid ? (
-                  <>
-                    <Wifi className="w-4 h-4 text-green-500" />
-                    <span className="text-green-500">Connected</span>
-                  </>
-                ) : (
-                  <>
-                    <WifiOff className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Disconnected</span>
-                  </>
-                )}
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Client ID</p>
+                <p className="font-mono text-sm">{broker.client_id ?? "—"}</p>
               </div>
             </div>
-            {broker.is_default && (
+          </div>
+
+          {broker.use_tls && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">TLS / Certificates</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">CA Certificate Path</p>
+                  <p className="font-mono text-sm break-all">{broker.ca_certificate_path ?? "—"}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Client Certificate Path</p>
+                  <p className="font-mono text-sm break-all">{broker.client_certificate_path ?? "—"}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Client Key Path</p>
+                  <p className="font-mono text-sm break-all">{broker.client_key_path ?? "—"}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Insecure TLS</p>
+                  <p>{broker.insecure_tls ? "Yes" : "No"}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Connection Options</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">Default</p>
-                <p className="text-primary">Yes</p>
+                <p className="text-sm font-medium text-muted-foreground">Keep Alive Interval (s)</p>
+                <p>{broker.keep_alive_interval}</p>
               </div>
-            )}
-            {broker.description && (
-              <div className="space-y-2 md:col-span-2">
-                <p className="text-sm font-medium text-muted-foreground">Description</p>
-                <p className="text-sm">{broker.description}</p>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Clean Session</p>
+                <p>{broker.clean_session ? "Yes" : "No"}</p>
               </div>
-            )}
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Connection Timeout (s)</p>
+                <p>{broker.connection_timeout_secs}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Operation Timeout (s)</p>
+                <p>{broker.operation_timeout_secs}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Last Will</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Topic</p>
+                <p className="font-mono text-sm">{broker.last_will_topic ?? "—"}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Message</p>
+                <p className="font-mono text-sm break-all">{broker.last_will_message ?? "—"}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">QoS</p>
+                <p>{broker.last_will_qos}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Retain</p>
+                <p>{broker.last_will_retain ? "Yes" : "No"}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Status</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Connection Status</p>
+                <div className="flex items-center gap-2">
+                  {connectedBrokerUuid === broker.uuid ? (
+                    <>
+                      <Wifi className="w-4 h-4 text-green-500" />
+                      <span className="text-green-500">Connected</span>
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Disconnected</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Default Broker</p>
+                <p>{broker.is_default ? "Yes" : "No"}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Active</p>
+                <p>{broker.is_active ? "Yes" : "No"}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Last Connected At</p>
+                <p className="text-sm">{formatDate(broker.last_connected_at)}</p>
+              </div>
+              {broker.last_connection_error && (
+                <div className="space-y-2 md:col-span-2">
+                  <p className="text-sm font-medium text-muted-foreground">Last Connection Error</p>
+                  <p className="text-sm text-destructive font-mono break-all">{broker.last_connection_error}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-4 border-t border-border">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Created At</p>
+                <p className="text-sm">{formatDate(broker.created_at)}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Updated At</p>
+                <p className="text-sm">{formatDate(broker.updated_at)}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

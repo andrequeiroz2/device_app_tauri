@@ -1,12 +1,12 @@
 import { useMemo, useState, useEffect } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { locationApi } from "@/services/locationApi";
 import { useAuth } from "@/context/AuthContext";
 import type { LocationPublic, LocationListResponse, LocationFilter } from "@/types/location";
 import { Button } from "@/components/ui/button";
-import { Loader2, ImageOff, Plus } from "lucide-react";
+import { Loader2, ImageOff, Plus, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { LocationFilter as LocationFilterPanel } from "@/components/LocationFilter";
 import { storage } from "@/lib/storage";
@@ -25,6 +25,7 @@ import {
 const PAGE_SIZE = 8;
 
 const LocationsList = () => {
+  const navigate = useNavigate();
   const { token, logout } = useAuth();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<LocationFilter>({ status: "active" });
@@ -116,9 +117,19 @@ const LocationsList = () => {
   return (
     <div className="min-h-[60vh]">
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Location</h1>
-          <p className="text-muted-foreground text-sm">List of your locations.</p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/")}
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-semibold">Location</h1>
+            <p className="text-muted-foreground text-sm">List of your locations.</p>
+          </div>
         </div>
         <LocationFilterPanel value={filter} onChange={setFilter} />
       </div>

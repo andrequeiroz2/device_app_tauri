@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
-import { Loader2, Server, Lock, Settings, MessageSquare } from "lucide-react";
+import { Loader2, Server, Lock, Settings, MessageSquare, ArrowLeft } from "lucide-react";
 import { mqttBrokerApi } from "@/services/mqttBrokerApi";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -98,11 +98,21 @@ const MqttBrokerCreate = () => {
   return (
     <div className="min-h-screen bg-secondary/20 text-foreground">
       <div className="max-w-4xl mx-auto py-10 px-4 space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Broker</h1>
-          <p className="text-muted-foreground text-sm">
-            Create a new MQTT broker configuration.
-          </p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/mqtt-brokers/list")}
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-semibold">Broker</h1>
+            <p className="text-muted-foreground text-sm">
+              Create a new MQTT broker configuration.
+            </p>
+          </div>
         </div>
 
         <form
@@ -403,11 +413,17 @@ const MqttBrokerCreate = () => {
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={() => navigate("/mqtt-brokers/list")}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={!isValid || submitting}>
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              disabled={!isValid || submitting}
+            >
               {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Create Broker
             </Button>
