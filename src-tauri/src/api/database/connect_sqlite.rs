@@ -4,6 +4,7 @@ use sqlx::{
 };
 use log::error;
 use std::{path::Path, str::FromStr, time::Duration};
+use tracing::info;
 
 use crate::api::database::schema_sqlite::init_sqlite_schema;
 
@@ -34,9 +35,23 @@ impl SqliteConfig{
 pub async fn get_sqlite_pool() -> Pool<Sqlite>{
     let config_sqlite = SqliteConfig::init_sqlite_config();
     let database_path = config_sqlite.get_database_path();
+    let db_path = Path::new(database_path);
+    let absolute_path = if db_path.is_absolute() {
+        db_path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| Path::new(".").to_path_buf())
+            .join(database_path)
+    };
+    info!(
+        database_path = %database_path,
+        absolute = ?absolute_path,
+        cwd = ?std::env::current_dir(),
+        "database connection"
+    );
     let max_connections = config_sqlite.get_max_connections();
     
-    if let Some(parent) = Path::new(database_path).parent() {
+    if let Some(parent) = absolute_path.parent() {
         if !parent.exists() {
             if let Err(e) = std::fs::create_dir_all(parent) {
                 error!("💥 Failed to create database directory: {:?}", e);
@@ -48,7 +63,7 @@ pub async fn get_sqlite_pool() -> Pool<Sqlite>{
     let connection_string = if database_path.starts_with("sqlite://") {
         database_path.to_string()
     } else {
-        format!("sqlite://{}", database_path)
+        format!("sqlite://{}", absolute_path.display())
     };
 
     let pool = match SqlitePoolOptions::new()

@@ -82,6 +82,40 @@ export const deviceApi = {
     }
   },
 
+  async getDeviceByMac(
+    token: string,
+    macAddress: string
+  ): Promise<GetDeviceResult> {
+    try {
+      const resp = await invoke<ApiResponse<DevicePublic | null>>("get_device_by_mac", {
+        token,
+        macAddress,
+      });
+
+      if (!resp.success) {
+        const message = normalizeMessage(resp.message);
+        return {
+          success: false,
+          message,
+          unauthorized: message.toLowerCase().includes("unauthorized"),
+        };
+      }
+
+      return {
+        success: true,
+        data: resp.data ?? undefined,
+        message: resp.message,
+      };
+    } catch (err) {
+      const message = normalizeMessage(err);
+      return {
+        success: false,
+        message,
+        unauthorized: message.toLowerCase().includes("unauthorized"),
+      };
+    }
+  },
+
   async getDevice(token: string, uuid: string): Promise<GetDeviceResult> {
     try {
       const resp = await invoke<ApiResponse<DevicePublic>>("get_device", {

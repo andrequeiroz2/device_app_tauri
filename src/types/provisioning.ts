@@ -19,6 +19,8 @@ export type DeviceInfoInput = {
 /** Device info from probe (backend returns boarder_type) */
 export type ProbeDeviceInfo = DeviceInfoInput & {
   boarder_type?: string;
+  /** Present when adopted; used to check if device belongs to logged user */
+  user_uuid?: string | null;
 };
 
 export type ProbeDeviceResult = {

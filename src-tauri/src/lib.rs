@@ -25,7 +25,8 @@ use api::location::location_model::LocationUpdateInput;
 use api::mqtt_broker::mqtt_broker_handler::{create_mqtt_broker_handler, list_mqtt_brokers_handler, delete_mqtt_broker_handler, get_mqtt_broker_handler, update_mqtt_broker_handler};
 use api::mqtt_broker::mqtt_broker_model::{MqttBrokerCreateInput, MqttBrokerListParams, MqttBrokerDeleteInput, MqttBrokerUpdateInput};
 use api::device::device_handler::{
-    create_device_handler, list_devices_handler, delete_device_handler, get_device_handler,
+    check_device_by_mac_handler, check_device_by_mac_for_adoption_handler, create_device_handler,
+    get_device_by_mac_handler, list_devices_handler, delete_device_handler, get_device_handler,
     update_device_handler, DeviceDeleteInput, get_device_commands_for_chart_handler,
 };
 use api::device::device_model::{
@@ -716,6 +717,36 @@ async fn get_device(
 }
 
 #[tauri::command]
+async fn check_device_by_mac(
+    token: String,
+    mac_address: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<api::device::device_handler::DeviceExistsByMacResponse>, ApiError> {
+    check_device_by_mac_handler(&token, &mac_address, &pool).await
+}
+
+#[tauri::command]
+async fn check_device_by_mac_for_adoption(
+    token: String,
+    mac_address: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<
+    ApiResponse<api::device::device_handler::CheckDeviceByMacForAdoptionResponse>,
+    ApiError,
+> {
+    check_device_by_mac_for_adoption_handler(&token, &mac_address, &pool).await
+}
+
+#[tauri::command]
+async fn get_device_by_mac(
+    token: String,
+    mac_address: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<Option<api::device::device_model::DevicePublic>>, ApiError> {
+    get_device_by_mac_handler(&token, &mac_address, &pool).await
+}
+
+#[tauri::command]
 async fn update_device(
     token: String,
     payload: DeviceUpdateInput,
@@ -1397,7 +1428,7 @@ pub fn run() {
             connect_broker, disconnect_broker, get_connected_broker_uuid,
             create_location, list_locations, delete_location, update_location, get_location,
             create_mqtt_broker, list_mqtt_brokers, delete_mqtt_broker, get_mqtt_broker, update_mqtt_broker,
-            create_device, list_devices, delete_device, get_device, update_device,
+            create_device, list_devices, delete_device, get_device, check_device_by_mac, check_device_by_mac_for_adoption, get_device_by_mac, update_device,
             list_serial_ports, probe_device, adopt_device, get_default_broker_for_adoption,
             create_sensor_reading, create_sensor_reading_batch, list_sensor_readings,
             get_sensor_reading_latest, get_sensor_reading_latest_all, get_sensor_reading_aggregated,

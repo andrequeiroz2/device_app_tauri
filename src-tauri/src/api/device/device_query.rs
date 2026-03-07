@@ -9,6 +9,15 @@ use crate::api::device::device_model::{
 use crate::api::error::map_device_db_error;
 use sqlx::Error as SqlxError;
 
+/// Normalize MAC for comparison: strip colons/hyphens, uppercase. Handles "80:F1:B2:50:AC:88" and "80F1B250AC88".
+fn normalize_mac_for_query(mac: &str) -> String {
+    mac.trim()
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .collect::<String>()
+        .to_uppercase()
+}
+
 #[instrument(skip(device, pool), fields(uuid = %device.uuid, user_id = device.user_id, name = %device.name, mac = %device.mac_address))]
 pub async fn device_post_query(
     device: &DeviceCreateDB,
@@ -217,6 +226,68 @@ pub async fn device_count_query(
     })?;
 
     Ok(total)
+}
+
+#[instrument(skip(pool), fields(user_id = user_id, mac_address = %mac_address))]
+pub async fn device_get_by_mac_query(
+    user_id: i64,
+    mac_address: &str,
+    pool: &Pool<Sqlite>,
+) -> Result<Option<Device>, String> {
+    let mac_norm = normalize_mac_for_query(mac_address);
+    let rec = sqlx::query_as::<_, Device>(
+        r#"
+        SELECT
+            id, uuid, user_id, location_id, name, description, device_type,
+            model, firmware_version, mac_address, sensor_type, actuator_type, device_scale,
+            adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
+            status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
+            heartbeat_interval, offline_threshold, last_command, last_command_at,
+            is_active, created_at, updated_at
+        FROM devices
+        WHERE REPLACE(REPLACE(UPPER(mac_address), ':', ''), '-', '') = ?1 AND user_id = ?2 AND is_active = 1
+        "#,
+    )
+    .bind(&mac_norm)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "fn: device_get_by_mac_query");
+        map_device_db_error(&e)
+    })?;
+
+    Ok(rec)
+}
+
+#[instrument(skip(pool), fields(mac_address = %mac_address))]
+pub async fn device_get_by_mac_any_user_query(
+    mac_address: &str,
+    pool: &Pool<Sqlite>,
+) -> Result<Option<Device>, String> {
+    let mac_norm = normalize_mac_for_query(mac_address);
+    let rec = sqlx::query_as::<_, Device>(
+        r#"
+        SELECT
+            id, uuid, user_id, location_id, name, description, device_type,
+            model, firmware_version, mac_address, sensor_type, actuator_type, device_scale,
+            adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
+            status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
+            heartbeat_interval, offline_threshold, last_command, last_command_at,
+            is_active, created_at, updated_at
+        FROM devices
+        WHERE REPLACE(REPLACE(UPPER(mac_address), ':', ''), '-', '') = ?1 AND is_active = 1
+        "#,
+    )
+    .bind(&mac_norm)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "fn: device_get_by_mac_any_user_query");
+        map_device_db_error(&e)
+    })?;
+
+    Ok(rec)
 }
 
 #[instrument(skip(pool), fields(user_id = user_id, device_uuid = %device_uuid))]
@@ -704,4 +775,41 @@ pub async fn device_commands_for_chart_query(
     })?;
 
     Ok(items)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_mac_for_query() {
+        assert_eq!(
+            normalize_mac_for_query("80:F1:B2:50:AC:88"),
+            "80F1B250AC88"
+        );
+        assert_eq!(
+            normalize_mac_for_query("80:f1:b2:50:ac:88"),
+            "80F1B250AC88"
+        );
+        assert_eq!(normalize_mac_for_query("80F1B250AC88"), "80F1B250AC88");
+        assert_eq!(
+            normalize_mac_for_query("80-F1-B2-50-AC-88"),
+            "80F1B250AC88"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_device_get_by_mac_any_user_finds_80f1b250ac88() {
+        let pool = crate::api::database::connect_sqlite::get_sqlite_pool().await;
+        let device = device_get_by_mac_any_user_query("80:F1:B2:50:AC:88", &pool)
+            .await
+            .expect("query should succeed");
+        assert!(
+            device.is_some(),
+            "Device 80:F1:B2:50:AC:88 must be found when can_adopt=true and MAC in devices table"
+        );
+        let d = device.unwrap();
+        assert_eq!(d.mac_address, "80:F1:B2:50:AC:88");
+        assert_eq!(d.user_id, 8);
+    }
 }

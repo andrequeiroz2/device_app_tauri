@@ -50,6 +50,20 @@ export type GetDefaultBrokerResult = {
   unauthorized?: boolean;
 };
 
+export type CheckDeviceByMacResult = {
+  success: boolean;
+  message?: string;
+  data?: { exists: boolean };
+  unauthorized?: boolean;
+};
+
+export type CheckDeviceByMacForAdoptionResult = {
+  success: boolean;
+  message?: string;
+  data?: { exists: boolean; owner_user_uuid?: string };
+  unauthorized?: boolean;
+};
+
 export const provisioningApi = {
   async listSerialPorts(): Promise<ListSerialPortsResult> {
     try {
@@ -137,6 +151,74 @@ export const provisioningApi = {
       return {
         success: true,
         data: resp.data,
+        message: resp.message,
+      };
+    } catch (err) {
+      const message = normalizeMessage(err);
+      return {
+        success: false,
+        message,
+        unauthorized: message.toLowerCase().includes("unauthorized"),
+      };
+    }
+  },
+
+  async checkDeviceByMac(token: string, macAddress: string): Promise<CheckDeviceByMacResult> {
+    try {
+      const resp = await invoke<ApiResponse<{ exists: boolean }>>("check_device_by_mac", {
+        token,
+        macAddress,
+      });
+
+      if (!resp.success) {
+        const message = normalizeMessage(resp.message);
+        return {
+          success: false,
+          message,
+          unauthorized: message.toLowerCase().includes("unauthorized"),
+        };
+      }
+
+      return {
+        success: true,
+        data: resp.data ?? { exists: false },
+        message: resp.message,
+      };
+    } catch (err) {
+      const message = normalizeMessage(err);
+      return {
+        success: false,
+        message,
+        unauthorized: message.toLowerCase().includes("unauthorized"),
+      };
+    }
+  },
+
+  async checkDeviceByMacForAdoption(
+    token: string,
+    macAddress: string
+  ): Promise<CheckDeviceByMacForAdoptionResult> {
+    try {
+      const resp = await invoke<ApiResponse<{
+        exists: boolean;
+        owner_user_uuid?: string;
+      }>>("check_device_by_mac_for_adoption", {
+        token,
+        macAddress,
+      });
+
+      if (!resp.success) {
+        const message = normalizeMessage(resp.message);
+        return {
+          success: false,
+          message,
+          unauthorized: message.toLowerCase().includes("unauthorized"),
+        };
+      }
+
+      return {
+        success: true,
+        data: resp.data ?? { exists: false },
         message: resp.message,
       };
     } catch (err) {

@@ -1,5 +1,5 @@
 use sqlx::{Pool, Sqlite};
-use tracing::{error, info, instrument};
+use tracing::{debug, error, info, instrument};
 
 use crate::api::auth::auth_validator::validate_bearer;
 use crate::api::device::device_model::{
@@ -7,8 +7,9 @@ use crate::api::device::device_model::{
     DeviceListParams, DeviceListResponse, DevicePublic, DeviceUpdateInput,
 };
 use crate::api::device::device_query::{
-    device_count_query, device_get_by_uuid_query, device_list_query, device_post_query,
-    device_soft_delete_query, device_update_query, get_location_uuid_by_id,
+    device_count_query, device_get_by_mac_any_user_query, device_get_by_mac_query,
+    device_get_by_uuid_query, device_list_query, device_post_query, device_soft_delete_query,
+    device_update_query, get_location_uuid_by_id, get_user_uuid_by_id,
 };
 use crate::api::location::location_query::location_get_by_uuid_query;
 use crate::api::model::{ApiError, ApiResponse};
@@ -265,7 +266,121 @@ pub async fn get_device_handler(
     Ok(ApiResponse::ok(public))
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct DeviceExistsByMacResponse {
+    pub exists: bool,
+}
 
+#[derive(Debug, serde::Serialize)]
+pub struct CheckDeviceByMacForAdoptionResponse {
+    pub exists: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_user_uuid: Option<String>,
+}
+
+#[instrument(skip(token, pool), fields(mac_address = %mac_address))]
+pub async fn check_device_by_mac_for_adoption_handler(
+    token: &str,
+    mac_address: &str,
+    pool: &Pool<Sqlite>,
+) -> Result<ApiResponse<CheckDeviceByMacForAdoptionResponse>, ApiError> {
+    let auth = validate_bearer(token)?;
+
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    if !user.is_active {
+        error!("check_device_by_mac_for_adoption_handler: user inactive");
+        return Err(ApiError::err("Unauthorized".to_string()));
+    }
+
+    let device = device_get_by_mac_any_user_query(mac_address, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    let (exists, owner_user_uuid) = match device {
+        Some(d) => {
+            let owner_uuid =
+                get_user_uuid_by_id(d.user_id, pool).await.map_err(ApiError::err)?;
+            info!(
+                mac = %mac_address,
+                owner_user_uuid = %owner_uuid,
+                "check_device_by_mac_for_adoption: device found in DB"
+            );
+            (true, Some(owner_uuid))
+        }
+        None => {
+            debug!(mac = %mac_address, "check_device_by_mac_for_adoption: MAC not in devices table");
+            (false, None)
+        }
+    };
+
+    Ok(ApiResponse::ok(CheckDeviceByMacForAdoptionResponse {
+        exists,
+        owner_user_uuid,
+    }))
+}
+
+#[instrument(skip(token, pool), fields(mac_address = %mac_address))]
+pub async fn check_device_by_mac_handler(
+    token: &str,
+    mac_address: &str,
+    pool: &Pool<Sqlite>,
+) -> Result<ApiResponse<DeviceExistsByMacResponse>, ApiError> {
+    let auth = validate_bearer(token)?;
+
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    if !user.is_active {
+        error!("check_device_by_mac_handler: user inactive");
+        return Err(ApiError::err("Unauthorized".to_string()));
+    }
+
+    let device = device_get_by_mac_query(user.id, mac_address, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    Ok(ApiResponse::ok(DeviceExistsByMacResponse {
+        exists: device.is_some(),
+    }))
+}
+
+#[instrument(skip(token, pool), fields(mac_address = %mac_address))]
+pub async fn get_device_by_mac_handler(
+    token: &str,
+    mac_address: &str,
+    pool: &Pool<Sqlite>,
+) -> Result<ApiResponse<Option<DevicePublic>>, ApiError> {
+    let auth = validate_bearer(token)?;
+
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    if !user.is_active {
+        error!("get_device_by_mac_handler: user inactive");
+        return Err(ApiError::err("Unauthorized".to_string()));
+    }
+
+    let device = device_get_by_mac_query(user.id, mac_address, pool)
+        .await
+        .map_err(ApiError::err)?;
+
+    let public = match device {
+        Some(d) => {
+            let location_uuid = get_location_uuid_by_id(d.location_id, pool)
+                .await
+                .map_err(ApiError::err)?;
+            Some(device_to_public(d, auth.user_uuid.clone(), location_uuid))
+        }
+        None => None,
+    };
+
+    Ok(ApiResponse::ok(public))
+}
 
 #[instrument(skip(token, filter, pool))]
 pub async fn get_device_commands_for_chart_handler(

@@ -4,6 +4,15 @@ import { useAuth } from "@/context/AuthContext";
 import { provisioningApi } from "@/services/provisioningApi";
 import { SerialConsole } from "@/components/provisioning/SerialConsole";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Loader2, Cpu, Wifi, Server, ArrowLeft, CircuitBoard, CheckCircle2, AlertCircle, Fingerprint, Layers, Thermometer, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,11 +23,13 @@ import {
   type AdoptDeviceInput,
   type DeviceInfoInput,
 } from "@/types/provisioning";
+import { deviceApi } from "@/services/deviceApi";
+import type { DevicePublic } from "@/types/device";
 
 const DeviceAdoptionWizard = () => {
   const { uuid } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
-  const { token, logout } = useAuth();
+  const { token, logout, user } = useAuth();
 
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
   const [portsLoading, setPortsLoading] = useState(false);
@@ -43,6 +54,9 @@ const DeviceAdoptionWizard = () => {
 
   const [adopting, setAdopting] = useState(false);
   const [showWifiPassword, setShowWifiPassword] = useState(false);
+  const [divergenceDialogOpen, setDivergenceDialogOpen] = useState(false);
+  const [otherUserPopupOpen, setOtherUserPopupOpen] = useState(false);
+  const [deviceFromDb, setDeviceFromDb] = useState<DevicePublic | null | undefined>(undefined);
 
   useEffect(() => {
     if (!token) return;
@@ -94,9 +108,84 @@ const DeviceAdoptionWizard = () => {
       return;
     }
     if (result.data) {
+      if (result.data.can_adopt && token) {
+        const mac = result.data.device_info.mac_address;
+        console.debug("[DeviceAdoption] can_adopt=true, checking MAC in DB:", mac);
+        const check = await provisioningApi.checkDeviceByMacForAdoption(token, mac);
+        console.debug(
+          "[DeviceAdoption] checkDeviceByMacForAdoption result:",
+          "success:",
+          check.success,
+          "exists:",
+          check.data?.exists,
+          "owner_user_uuid:",
+          check.data?.owner_user_uuid ? `${check.data.owner_user_uuid.slice(0, 8)}...` : "-",
+          "message:",
+          check.message ?? "-"
+        );
+        if (check.success && check.data?.exists) {
+          const ownerUuid = check.data.owner_user_uuid?.trim();
+          const loggedUuid = user?.uuid?.trim();
+          const sameUser = ownerUuid && loggedUuid && ownerUuid === loggedUuid;
+          console.debug(
+            "[DeviceAdoption] MAC in DB:",
+            mac,
+            "ownerUuid:",
+            ownerUuid ? `${ownerUuid.slice(0, 8)}...` : "-",
+            "loggedUuid:",
+            loggedUuid ? `${loggedUuid.slice(0, 8)}...` : "-",
+            "sameUser:",
+            sameUser,
+            "->",
+            sameUser ? "divergence popup" : "other user popup"
+          );
+          setProbeResult(null);
+          if (sameUser) {
+            setDivergenceDialogOpen(true);
+          } else {
+            setOtherUserPopupOpen(true);
+          }
+          return;
+        }
+        console.debug("[DeviceAdoption] MAC not in DB or check failed, proceeding with adoption");
+      }
       setProbeResult(result.data);
       if (result.data.can_adopt) {
         setName(result.data.device_info.boarder_type ?? result.data.device_info.model ?? "Device");
+        setDeviceFromDb(undefined);
+        setOtherUserPopupOpen(false);
+      } else {
+        const deviceUserUuid = (result.data.device_info as { user_uuid?: string }).user_uuid?.trim();
+        const loggedUserUuid = user?.uuid?.trim();
+        console.debug(
+          "[DeviceAdoption] can_adopt=false:",
+          "deviceUserUuid:",
+          deviceUserUuid ? `${deviceUserUuid.slice(0, 8)}...` : "-",
+          "loggedUserUuid:",
+          loggedUserUuid ? `${loggedUserUuid.slice(0, 8)}...` : "-"
+        );
+        if (!deviceUserUuid || deviceUserUuid !== loggedUserUuid) {
+          console.debug("[DeviceAdoption] different user or no user_uuid -> other user popup");
+          setProbeResult(null);
+          setDeviceFromDb(undefined);
+          setOtherUserPopupOpen(true);
+          return;
+        }
+        if (token) {
+          setDeviceFromDb(undefined);
+          const r = await deviceApi.getDeviceByMac(
+            token,
+            result.data.device_info.mac_address
+          );
+          if (r.success && r.data) {
+            console.debug("[DeviceAdoption] can_adopt=false same user: device found in DB");
+            setDeviceFromDb(r.data);
+          } else {
+            console.debug("[DeviceAdoption] can_adopt=false same user: device NOT in DB -> other user popup");
+            setProbeResult(null);
+            setOtherUserPopupOpen(true);
+          }
+        }
       }
     }
   };
@@ -330,12 +419,12 @@ const DeviceAdoptionWizard = () => {
               transition={{ duration: 0.25, ease: "easeOut" }}
               className="space-y-6"
             >
-            {/* Device info card */}
+            {/* Device detected - card compacta quando Already adopted */}
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                   <CircuitBoard className="w-4 h-4" />
-                  Detected Device
+                  {probeResult.can_adopt ? "Detected Device" : "Device detected"}
                 </div>
                 {probeResult.can_adopt ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-950/60 px-2.5 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
@@ -349,43 +438,148 @@ const DeviceAdoptionWizard = () => {
                   </span>
                 )}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div className="space-y-0.5">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Cpu className="w-3 h-3" /> Board
-                  </p>
-                  <p className="text-sm font-medium">{probeResult.device_info.boarder_type}</p>
-                </div>
-                <div className="space-y-0.5">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Layers className="w-3 h-3" /> Type
-                  </p>
-                  <p className="text-sm font-medium">{probeResult.device_info.device_type}</p>
-                </div>
-                {probeResult.device_info.sensor_type && (
+              {probeResult.can_adopt ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div className="space-y-0.5">
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Thermometer className="w-3 h-3" /> Sensor
+                      <Cpu className="w-3 h-3" /> Board
                     </p>
-                    <p className="text-sm font-medium">{probeResult.device_info.sensor_type}</p>
+                    <p className="text-sm font-medium">{probeResult.device_info.boarder_type}</p>
                   </div>
-                )}
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Layers className="w-3 h-3" /> Type
+                    </p>
+                    <p className="text-sm font-medium">{probeResult.device_info.device_type}</p>
+                  </div>
+                  {probeResult.device_info.sensor_type && (
+                    <div className="space-y-0.5">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Thermometer className="w-3 h-3" /> Sensor
+                      </p>
+                      <p className="text-sm font-medium">{probeResult.device_info.sensor_type}</p>
+                    </div>
+                  )}
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Fingerprint className="w-3 h-3" /> MAC
+                    </p>
+                    <p className="text-sm font-mono font-medium">{probeResult.device_info.mac_address}</p>
+                  </div>
+                  {probeResult.firmware_version && (
+                    <div className="space-y-0.5">
+                      <p className="text-xs text-muted-foreground">Firmware</p>
+                      <p className="text-sm font-medium">{probeResult.firmware_version}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
                 <div className="space-y-0.5">
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <Fingerprint className="w-3 h-3" /> MAC
                   </p>
                   <p className="text-sm font-mono font-medium">{probeResult.device_info.mac_address}</p>
                 </div>
-                {probeResult.firmware_version && (
-                  <div className="space-y-0.5">
-                    <p className="text-xs text-muted-foreground">Firmware</p>
-                    <p className="text-sm font-medium">{probeResult.firmware_version}</p>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
 
-            {/* Device name and description */}
+            {/* Cards quando Already adopted e mesmo usuário */}
+            {!probeResult.can_adopt && (
+              <>
+                {deviceFromDb === undefined ? (
+                  <div className="rounded-xl border border-border bg-muted/20 p-4">
+                    <p className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Searching database...
+                    </p>
+                  </div>
+                ) : deviceFromDb ? (
+                  <>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <Server className="w-4 h-4" />
+                        Registered device
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <div className="space-y-0.5">
+                          <p className="text-xs text-muted-foreground">Name</p>
+                          <p className="text-sm font-medium">{deviceFromDb.name}</p>
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-xs text-muted-foreground">Type</p>
+                          <p className="text-sm font-medium">{deviceFromDb.device_type}</p>
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-xs text-muted-foreground">Status</p>
+                          <p className="text-sm font-medium">{deviceFromDb.operation_status ?? "offline"}</p>
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-xs text-muted-foreground">Location</p>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/locations/${deviceFromDb.location_uuid}`)}
+                            className="text-sm font-medium text-primary hover:underline truncate block text-left"
+                            title={deviceFromDb.location_uuid}
+                          >
+                            View location →
+                          </button>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => navigate(`/devices/${deviceFromDb.uuid}/dashboard`)}
+                      >
+                        Open dashboard
+                      </Button>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-4">
+                      <div className="text-sm font-semibold text-foreground">Device details</div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <section className="space-y-2">
+                          <h4 className="text-xs font-medium uppercase text-muted-foreground">Last Will</h4>
+                          <div className="space-y-1 text-sm">
+                            <p><span className="text-muted-foreground">Enabled:</span> {deviceFromDb.lwt_enabled ? "Yes" : "No"}</p>
+                            <p><span className="text-muted-foreground">Message:</span> {deviceFromDb.lwt_message ?? "-"}</p>
+                            <p><span className="text-muted-foreground">QoS:</span> {deviceFromDb.lwt_qos}</p>
+                            <p><span className="text-muted-foreground">Retain:</span> {deviceFromDb.lwt_retain ? "Yes" : "No"}</p>
+                          </div>
+                        </section>
+                        <section className="space-y-2">
+                          <h4 className="text-xs font-medium uppercase text-muted-foreground">QoS</h4>
+                          <div className="space-y-1 text-sm">
+                            <p><span className="text-muted-foreground">Publish:</span> {deviceFromDb.publish_qos}</p>
+                            <p><span className="text-muted-foreground">Subscribe:</span> {deviceFromDb.subscribe_qos}</p>
+                          </div>
+                        </section>
+                        <section className="space-y-2">
+                          <h4 className="text-xs font-medium uppercase text-muted-foreground">Retain</h4>
+                          <div className="space-y-1 text-sm">
+                            <p><span className="text-muted-foreground">Status:</span> {deviceFromDb.status_retain ? "Yes" : "No"}</p>
+                            <p><span className="text-muted-foreground">Data:</span> {deviceFromDb.data_retain ? "Yes" : "No"}</p>
+                          </div>
+                        </section>
+                        <section className="space-y-2">
+                          <h4 className="text-xs font-medium uppercase text-muted-foreground">Topic</h4>
+                          <p className="text-sm text-muted-foreground">Base: {"{user_uuid}/{device_uuid}"}</p>
+                          <p className="text-xs text-muted-foreground">See dashboard for full topic.</p>
+                        </section>
+                        <section className="space-y-2">
+                          <h4 className="text-xs font-medium uppercase text-muted-foreground">Heartbeat</h4>
+                          <div className="space-y-1 text-sm">
+                            <p><span className="text-muted-foreground">Interval:</span> {deviceFromDb.heartbeat_interval}s</p>
+                            <p><span className="text-muted-foreground">Offline threshold:</span> {deviceFromDb.offline_threshold}s</p>
+                          </div>
+                        </section>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </>
+            )}
+
+            {/* Formulário de adoção - apenas quando can_adopt */}
+            {probeResult.can_adopt && (
+            <>
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-foreground">Device</div>
               <div className="space-y-2">
@@ -477,8 +671,7 @@ const DeviceAdoptionWizard = () => {
               )}
             </div>
 
-            {probeResult.can_adopt ? (
-              <Button
+            <Button
                 onClick={handleAdopt}
                 disabled={adopting || !brokerInfo || !wifiSsid.trim()}
                 className="w-full"
@@ -492,18 +685,59 @@ const DeviceAdoptionWizard = () => {
                   "Adopt Device"
                 )}
               </Button>
-            ) : (
-              <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/50 px-3 py-2">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-400">
-                {probeResult.message ?? "Device cannot be adopted (may already be adopted)."}
-              </p>
-            </div>
+            </>
             )}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
       </motion.div>
+
+      {/* Divergence popup: device ready for adoption but already in DB (same user) */}
+      <AlertDialog open={divergenceDialogOpen} onOpenChange={setDivergenceDialogOpen}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Inconsistent information</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              There are divergences in the information. The device indicates it is ready for
+              adoption, but it is already registered in your account. Access the device through
+              its dashboard.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setDivergenceDialogOpen(false);
+                navigate("/");
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Popup: device adopted by another user */}
+      <AlertDialog open={otherUserPopupOpen} onOpenChange={setOtherUserPopupOpen}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Device unavailable</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              This device is already adopted by another user and cannot be adopted again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setOtherUserPopupOpen(false);
+                navigate("/");
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

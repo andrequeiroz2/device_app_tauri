@@ -32,12 +32,13 @@ def handle_ping(data):
 
 
 def handle_get_info(data):
-    """Return device identity fields and firmware version."""
+    """Return device identity fields and firmware version.
+    When adopted, also returns user_uuid for ownership check."""
     config = read_config()
     if config is None:
         return {"ok": False, "error": "Could not read device config"}
 
-    return {
+    out = {
         "ok":               True,
         "adopted_status":   config.get("adopted_status"),
         "device_type":      config.get("device_type"),
@@ -48,6 +49,9 @@ def handle_get_info(data):
         "device_scale":     config.get("device_scale"),
         "firmware_version": FIRMWARE_VERSION,
     }
+    if config.get("adopted_status") == 1:
+        out["user_uuid"] = config.get("user_uuid", "")
+    return out
 
 
 def handle_get_config(data):

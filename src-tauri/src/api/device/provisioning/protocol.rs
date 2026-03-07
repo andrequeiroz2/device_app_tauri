@@ -42,6 +42,9 @@ pub struct DeviceInfo {
     pub device_scale: Option<serde_json::Value>,
     #[serde(default)]
     pub firmware_version: Option<String>,
+    /// Present when adopted_status=1; used to check if device belongs to logged user
+    #[serde(default)]
+    pub user_uuid: Option<String>,
 }
 
 impl DeviceInfo {
@@ -242,6 +245,7 @@ mod tests {
             mac_address: "3C:71:BF:4D:DB:0C".to_string(),
             device_scale: None,
             firmware_version: None,
+            user_uuid: None,
         };
         assert!(valid_sensor.validate().is_ok());
 

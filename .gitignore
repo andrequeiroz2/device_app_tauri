@@ -3,7 +3,7 @@ tasks/
 
 # Scripts (testes locais)
 scripts/  
-embedded/esp/tasks/
+
 # Logs
 logs
 *.log
