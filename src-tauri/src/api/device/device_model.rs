@@ -78,8 +78,20 @@ pub struct Device {
     pub last_command: Option<String>,
     pub last_command_at: Option<String>,
     pub is_active: bool,
+    pub icon_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Ícone expandido para exibição em Device (evita dep. circular com icon_model).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeviceIconPublic {
+    pub uuid: String,
+    pub code: String,
+    pub name: String,
+    pub iconify_id: String,
+    pub category: String,
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -113,6 +125,8 @@ pub struct DevicePublic {
     pub last_command: Option<String>,
     pub last_command_at: Option<String>,
     pub is_active: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<DeviceIconPublic>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -129,6 +143,8 @@ pub struct DeviceCreateInput {
     pub sensor_type: Option<String>,
     pub actuator_type: Option<String>,
     pub device_scale: Option<serde_json::Value>,
+    #[serde(default)]
+    pub icon_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -247,6 +263,7 @@ pub struct DeviceCreateDB {
     pub sensor_type: Option<String>,
     pub actuator_type: Option<String>,
     pub device_scale: Option<String>,
+    pub icon_id: Option<i64>,
 }
 
 #[derive(Debug, Default)]
@@ -368,6 +385,7 @@ impl DeviceCreateInput {
             sensor_type: self.sensor_type.as_ref().map(|s| s.trim().to_string()),
             actuator_type: self.actuator_type.as_ref().map(|a| a.trim().to_string()),
             device_scale: self.device_scale.as_ref().map(|s| s.to_string()),
+            icon_id: self.icon_id,
         }
     }
 }

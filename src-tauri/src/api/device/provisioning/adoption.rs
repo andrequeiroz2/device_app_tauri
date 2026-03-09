@@ -8,6 +8,7 @@ use super::protocol::{DeviceConfig, DeviceInfo, DeviceProtocol};
 use super::serial::SerialConnection;
 use crate::api::device::device_handler::create_device_handler;
 use crate::api::device::device_model::{DeviceCreateInput, DevicePublic, DeviceType};
+use crate::api::icon::icon_query::icon_get_by_uuid_query;
 use crate::api::user::user_query::user_get_by_uuid_query;
 use crate::collector::persistence::query::get_default_broker_by_user_query;
 
@@ -43,6 +44,8 @@ pub struct AdoptDeviceInput {
     pub location_uuid: String,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub icon_uuid: Option<String>,
     #[serde(default)]
     pub broker_url: String,
     #[serde(default)]
@@ -306,6 +309,15 @@ pub async fn adopt_device(
 
     let device_type = parse_device_type(&input.device_info.device_type)?;
 
+    let icon_id = if let Some(ref icon_uuid) = input.icon_uuid {
+        let icon = icon_get_by_uuid_query(icon_uuid, pool)
+            .await
+            .map_err(|e| format!("Invalid icon: {}", e))?;
+        Some(icon.id)
+    } else {
+        None
+    };
+
     let create_input = DeviceCreateInput {
         name: input.name,
         location_uuid: input.location_uuid,
@@ -317,6 +329,7 @@ pub async fn adopt_device(
         sensor_type: input.device_info.sensor_type,
         actuator_type: input.device_info.actuator_type,
         device_scale: input.device_info.device_scale,
+        icon_id,
     };
 
     let response = create_device_handler(token, &create_input, pool)
@@ -468,6 +481,7 @@ mod tests {
             name: "Test Device".to_string(),
             location_uuid: "location-uuid".to_string(),
             description: None,
+            icon_uuid: None,
             broker_url: "mqtt://localhost:1883".to_string(),
             wifi_ssid: "MyWifi".to_string(),
             wifi_password: "secret".to_string(),

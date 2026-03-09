@@ -1,3 +1,5 @@
+import type { IconPublic } from "./icon";
+
 export type DeviceType = "actuator" | "sensor";
 export type OperationStatus = "online" | "offline";
 
@@ -31,6 +33,7 @@ export type DevicePublic = {
   last_command?: string | null;
   last_command_at?: string | null;
   is_active: boolean;
+  icon?: IconPublic | null;
   created_at: string;
   updated_at: string;
 };

@@ -3,7 +3,7 @@ use tracing::{debug, error, info, instrument};
 
 use crate::api::auth::auth_validator::validate_bearer;
 use crate::api::device::device_model::{
-    parse_device_type, parse_operation_status, Device, DeviceCreateInput,
+    parse_device_type, parse_operation_status, Device, DeviceCreateInput, DeviceIconPublic,
     DeviceListParams, DeviceListResponse, DevicePublic, DeviceUpdateInput,
 };
 use crate::api::device::device_query::{
@@ -11,13 +11,31 @@ use crate::api::device::device_query::{
     device_get_by_uuid_query, device_list_query, device_post_query, device_soft_delete_query,
     device_update_query, get_location_uuid_by_id, get_user_uuid_by_id,
 };
+use crate::api::icon::icon_query::{icon_get_by_id_query, icon_get_by_ids_query};
+use crate::api::icon::icon_model::Icon;
 use crate::api::location::location_query::location_get_by_uuid_query;
 use crate::api::model::{ApiError, ApiResponse};
 use crate::api::user::user_query::user_get_by_uuid_query;
 use crate::api::device::device_model::{DeviceCommandChartPoint, DeviceCommandsChartFilter};
 use crate::api::device::device_query::device_commands_for_chart_query;
 
-fn device_to_public(device: Device, user_uuid: String, location_uuid: String) -> DevicePublic {
+fn icon_to_device_icon_public(icon: Icon) -> DeviceIconPublic {
+    DeviceIconPublic {
+        uuid: icon.uuid,
+        code: icon.code,
+        name: icon.name,
+        iconify_id: icon.iconify_id,
+        category: icon.category,
+        color: icon.color,
+    }
+}
+
+fn device_to_public(
+    device: Device,
+    user_uuid: String,
+    location_uuid: String,
+    icon: Option<DeviceIconPublic>,
+) -> DevicePublic {
     let device_scale = device
         .device_scale
         .as_ref()
@@ -53,6 +71,7 @@ fn device_to_public(device: Device, user_uuid: String, location_uuid: String) ->
         last_command: device.last_command,
         last_command_at: device.last_command_at,
         is_active: device.is_active,
+        icon,
         created_at: device.created_at,
         updated_at: device.updated_at,
     }
@@ -88,7 +107,20 @@ pub async fn create_device_handler(
         .await
         .map_err(ApiError::err)?;
 
-    let public = device_to_public(device, auth.user_uuid.clone(), input.location_uuid.clone());
+    let icon = match device.icon_id {
+        Some(id) => icon_get_by_id_query(id, pool)
+            .await
+            .map_err(ApiError::err)?
+            .map(icon_to_device_icon_public),
+        None => None,
+    };
+
+    let public = device_to_public(
+        device,
+        auth.user_uuid.clone(),
+        input.location_uuid.clone(),
+        icon,
+    );
 
     info!(uuid = %public.uuid, "create_device_handler: device created");
     Ok(ApiResponse::ok(public))
@@ -152,12 +184,27 @@ pub async fn list_devices_handler(
         .await
         .map_err(ApiError::err)?;
 
+    let icon_ids: Vec<i64> = devices.iter().filter_map(|d| d.icon_id).collect();
+    let icons = icon_get_by_ids_query(&icon_ids, pool)
+        .await
+        .map_err(ApiError::err)?;
+    let icon_map: std::collections::HashMap<i64, DeviceIconPublic> = icons
+        .into_iter()
+        .map(|i| (i.id, icon_to_device_icon_public(i)))
+        .collect();
+
     let mut items = Vec::with_capacity(devices.len());
     for device in devices {
         let location_uuid = get_location_uuid_by_id(device.location_id, pool)
             .await
             .unwrap_or_default();
-        items.push(device_to_public(device, auth.user_uuid.clone(), location_uuid));
+        let icon = device.icon_id.and_then(|id| icon_map.get(&id).cloned());
+        items.push(device_to_public(
+            device,
+            auth.user_uuid.clone(),
+            location_uuid,
+            icon,
+        ));
     }
 
     Ok(ApiResponse::ok(DeviceListResponse {
@@ -229,7 +276,20 @@ pub async fn update_device_handler(
         .await
         .unwrap_or_default();
 
-    let public = device_to_public(device, auth.user_uuid.clone(), location_uuid);
+    let icon = match device.icon_id {
+        Some(id) => icon_get_by_id_query(id, pool)
+            .await
+            .map_err(ApiError::err)?
+            .map(icon_to_device_icon_public),
+        None => None,
+    };
+
+    let public = device_to_public(
+        device,
+        auth.user_uuid.clone(),
+        location_uuid,
+        icon,
+    );
 
     info!(uuid = %public.uuid, "update_device_handler: device updated");
     Ok(ApiResponse::ok(public))
@@ -260,7 +320,20 @@ pub async fn get_device_handler(
         .await
         .unwrap_or_default();
 
-    let public = device_to_public(device, auth.user_uuid.clone(), location_uuid);
+    let icon = match device.icon_id {
+        Some(id) => icon_get_by_id_query(id, pool)
+            .await
+            .map_err(ApiError::err)?
+            .map(icon_to_device_icon_public),
+        None => None,
+    };
+
+    let public = device_to_public(
+        device,
+        auth.user_uuid.clone(),
+        location_uuid,
+        icon,
+    );
 
     info!(uuid = %public.uuid, "get_device_handler: device retrieved");
     Ok(ApiResponse::ok(public))
@@ -374,7 +447,19 @@ pub async fn get_device_by_mac_handler(
             let location_uuid = get_location_uuid_by_id(d.location_id, pool)
                 .await
                 .map_err(ApiError::err)?;
-            Some(device_to_public(d, auth.user_uuid.clone(), location_uuid))
+            let icon = match d.icon_id {
+                Some(id) => icon_get_by_id_query(id, pool)
+                    .await
+                    .map_err(ApiError::err)?
+                    .map(icon_to_device_icon_public),
+                None => None,
+            };
+            Some(device_to_public(
+                d,
+                auth.user_uuid.clone(),
+                location_uuid,
+                icon,
+            ))
         }
         None => None,
     };

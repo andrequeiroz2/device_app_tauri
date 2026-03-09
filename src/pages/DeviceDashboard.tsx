@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { deviceApi } from "@/services/deviceApi";
 import { useAuth } from "@/context/AuthContext";
@@ -13,7 +13,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ArrowLeft, Loader2, Calendar } from "lucide-react";
+import { Icon } from "@iconify/react";
+import { ArrowLeft, Loader2, Calendar, BarChart3, Cpu } from "lucide-react";
 import { toast } from "sonner";
 import type { DevicePublic } from "@/types/device";
 
@@ -171,6 +172,30 @@ export default function DeviceDashboard() {
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
+          {device.icon?.iconify_id ? (
+            <div
+              className="w-10 h-10 flex items-center justify-center rounded-lg shrink-0"
+              style={{
+                backgroundColor: device.icon.color
+                  ? `${device.icon.color}20`
+                  : "var(--muted)",
+              }}
+            >
+              <Icon
+                icon={device.icon.iconify_id}
+                className="w-6 h-6"
+                style={{ color: device.icon.color ?? undefined }}
+              />
+            </div>
+          ) : (
+            <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-muted shrink-0">
+              {isSensor ? (
+                <BarChart3 className="w-6 h-6 text-muted-foreground" />
+              ) : (
+                <Cpu className="w-6 h-6 text-muted-foreground" />
+              )}
+            </div>
+          )}
           <div>
             <h1 className="text-2xl font-semibold">{device.name}</h1>
             <p className="text-sm text-muted-foreground">

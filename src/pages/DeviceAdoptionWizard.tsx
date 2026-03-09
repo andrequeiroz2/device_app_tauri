@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Cpu, Wifi, Server, ArrowLeft, CircuitBoard, CheckCircle2, AlertCircle, Fingerprint, Layers, Thermometer, Eye, EyeOff } from "lucide-react";
+import { Loader2, Cpu, Wifi, Server, ArrowLeft, CircuitBoard, CheckCircle2, AlertCircle, Fingerprint, Layers, Thermometer, Eye, EyeOff, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -25,6 +25,7 @@ import {
 } from "@/types/provisioning";
 import { deviceApi } from "@/services/deviceApi";
 import type { DevicePublic } from "@/types/device";
+import { DeviceIconSelector } from "@/components/DeviceIconSelector";
 
 const DeviceAdoptionWizard = () => {
   const { uuid } = useParams<{ uuid: string }>();
@@ -42,6 +43,7 @@ const DeviceAdoptionWizard = () => {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [iconUuid, setIconUuid] = useState<string | null>(null);
   const [wifiSsid, setWifiSsid] = useState("");
   const [wifiPassword, setWifiPassword] = useState("");
 
@@ -152,6 +154,7 @@ const DeviceAdoptionWizard = () => {
       setProbeResult(result.data);
       if (result.data.can_adopt) {
         setName(result.data.device_info.boarder_type ?? result.data.device_info.model ?? "Device");
+        setIconUuid(null);
         setDeviceFromDb(undefined);
         setOtherUserPopupOpen(false);
       } else {
@@ -222,6 +225,7 @@ const DeviceAdoptionWizard = () => {
       name: name.trim(),
       location_uuid: uuid,
       description: description.trim() || undefined,
+      icon_uuid: iconUuid || undefined,
       broker_url: brokerInfo.broker_url,
       wifi_ssid: wifiSsid.trim(),
       wifi_password: wifiPassword,
@@ -601,6 +605,25 @@ const DeviceAdoptionWizard = () => {
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Optional"
                     className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4" />
+                    Icon
+                    <span className="text-muted-foreground font-normal">(optional)</span>
+                  </label>
+                  <p className="text-xs text-muted-foreground mt-0.5 mb-2">
+                    Showing only {probeResult.device_info.device_type} icons
+                  </p>
+                  <DeviceIconSelector
+                    deviceType={
+                      probeResult.device_info.device_type?.toLowerCase() === "actuator"
+                        ? "actuator"
+                        : "sensor"
+                    }
+                    value={iconUuid}
+                    onChange={setIconUuid}
                   />
                 </div>
               </div>

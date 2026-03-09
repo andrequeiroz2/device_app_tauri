@@ -1,15 +1,21 @@
 import type { LocationFilter } from "@/types/location";
 import type { MqttBrokerFilter } from "@/types/mqttBroker";
+import type { IconFilter } from "@/types/icon";
 
 const TOKEN_KEY = "device_app_token";
 const LOCATION_FILTER_KEY = "device_app_location_filter";
 const MQTT_BROKER_FILTER_KEY = "device_app_mqtt_broker_filter";
+const ICON_FILTER_KEY = "device_app_icon_filter";
 
 const DEFAULT_FILTER: LocationFilter = {
   status: "active",
 };
 
 const DEFAULT_MQTT_BROKER_FILTER: MqttBrokerFilter = {
+  status: "active",
+};
+
+const DEFAULT_ICON_FILTER: IconFilter = {
   status: "active",
 };
 
@@ -63,6 +69,24 @@ export const storage = {
   setMqttBrokerFilter(filter: MqttBrokerFilter) {
     if (typeof localStorage === "undefined") return;
     localStorage.setItem(MQTT_BROKER_FILTER_KEY, JSON.stringify(filter));
+  },
+  getIconFilter(): IconFilter {
+    if (typeof localStorage === "undefined") return DEFAULT_ICON_FILTER;
+    try {
+      const stored = localStorage.getItem(ICON_FILTER_KEY);
+      if (!stored) return DEFAULT_ICON_FILTER;
+      const parsed = JSON.parse(stored) as IconFilter;
+      if (parsed.status === "active" || parsed.status === "all") {
+        return parsed;
+      }
+      return DEFAULT_ICON_FILTER;
+    } catch {
+      return DEFAULT_ICON_FILTER;
+    }
+  },
+  setIconFilter(filter: IconFilter) {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(ICON_FILTER_KEY, JSON.stringify(filter));
   },
 };
 

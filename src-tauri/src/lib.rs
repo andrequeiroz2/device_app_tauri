@@ -24,6 +24,8 @@ use api::location::location_model::LocationDeleteInput;
 use api::location::location_model::LocationUpdateInput;
 use api::mqtt_broker::mqtt_broker_handler::{create_mqtt_broker_handler, list_mqtt_brokers_handler, delete_mqtt_broker_handler, get_mqtt_broker_handler, update_mqtt_broker_handler};
 use api::mqtt_broker::mqtt_broker_model::{MqttBrokerCreateInput, MqttBrokerListParams, MqttBrokerDeleteInput, MqttBrokerUpdateInput};
+use api::icon::icon_handler::{create_icon_handler, list_icons_handler, get_icon_handler, update_icon_handler, delete_icon_handler};
+use api::icon::icon_model::{IconCreateInput, IconListParams, IconListResponse, IconPublic, IconUpdateInput, IconDeleteInput};
 use api::device::device_handler::{
     check_device_by_mac_handler, check_device_by_mac_for_adoption_handler, create_device_handler,
     get_device_by_mac_handler, list_devices_handler, delete_device_handler, get_device_handler,
@@ -563,6 +565,203 @@ async fn update_mqtt_broker(
                 error = %err.message,
                 broker_uuid = %payload.uuid,
                 "update_mqtt_broker: error"
+            );
+            Err(err)
+        }
+    }
+}
+
+// =====================
+// ICON COMMANDS
+// =====================
+
+#[tauri::command]
+async fn create_icon(
+    token: String,
+    payload: IconCreateInput,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<IconPublic>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "create_icon",
+        request_id = %request_id,
+        name = %payload.name,
+        iconify_id = %payload.iconify_id,
+    );
+    let _guard = span.enter();
+
+    match create_icon_handler(&token, &payload, &pool).await {
+        Ok(resp) => {
+            if let Some(ref icon) = resp.data {
+                info!(
+                    request_id = %request_id,
+                    uuid = %icon.uuid,
+                    name = %icon.name,
+                    code = %icon.code,
+                    "create_icon: success"
+                );
+            } else {
+                info!(request_id = %request_id, "create_icon: success (no data)");
+            }
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(
+                request_id = %request_id,
+                error = %err.message,
+                name = %payload.name,
+                iconify_id = %payload.iconify_id,
+                "create_icon: error"
+            );
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn list_icons(
+    token: String,
+    params: IconListParams,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<IconListResponse>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "list_icons",
+        request_id = %request_id,
+        category = ?params.category,
+    );
+    let _guard = span.enter();
+
+    match list_icons_handler(&token, &params, &pool).await {
+        Ok(resp) => {
+            info!(
+                request_id = %request_id,
+                count = resp.data.as_ref().map(|d| d.items.len()).unwrap_or(0),
+                total = resp.data.as_ref().map(|d| d.total).unwrap_or(0),
+                "list_icons: success"
+            );
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(
+                request_id = %request_id,
+                error = %err.message,
+                "list_icons: error"
+            );
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn get_icon(
+    token: String,
+    icon_uuid: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<IconPublic>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "get_icon",
+        request_id = %request_id,
+        icon_uuid = %icon_uuid,
+    );
+    let _guard = span.enter();
+
+    match get_icon_handler(&token, &icon_uuid, &pool).await {
+        Ok(resp) => {
+            if let Some(ref icon) = resp.data {
+                info!(
+                    request_id = %request_id,
+                    uuid = %icon.uuid,
+                    name = %icon.name,
+                    "get_icon: success"
+                );
+            } else {
+                info!(request_id = %request_id, "get_icon: success (no data)");
+            }
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(
+                request_id = %request_id,
+                error = %err.message,
+                icon_uuid = %icon_uuid,
+                "get_icon: error"
+            );
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn update_icon(
+    token: String,
+    payload: IconUpdateInput,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<IconPublic>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "update_icon",
+        request_id = %request_id,
+        icon_uuid = %payload.uuid,
+    );
+    let _guard = span.enter();
+
+    match update_icon_handler(&token, &payload, &pool).await {
+        Ok(resp) => {
+            if let Some(ref icon) = resp.data {
+                info!(
+                    request_id = %request_id,
+                    uuid = %icon.uuid,
+                    name = %icon.name,
+                    "update_icon: success"
+                );
+            } else {
+                info!(request_id = %request_id, "update_icon: success (no data)");
+            }
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(
+                request_id = %request_id,
+                error = %err.message,
+                icon_uuid = %payload.uuid,
+                "update_icon: error"
+            );
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn delete_icon(
+    token: String,
+    payload: IconDeleteInput,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<()>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "delete_icon",
+        request_id = %request_id,
+        icon_uuid = %payload.uuid,
+    );
+    let _guard = span.enter();
+
+    match delete_icon_handler(&token, &payload, &pool).await {
+        Ok(resp) => {
+            info!(
+                request_id = %request_id,
+                icon_uuid = %payload.uuid,
+                "delete_icon: success"
+            );
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(
+                request_id = %request_id,
+                error = %err.message,
+                icon_uuid = %payload.uuid,
+                "delete_icon: error"
             );
             Err(err)
         }
@@ -1428,6 +1627,7 @@ pub fn run() {
             connect_broker, disconnect_broker, get_connected_broker_uuid,
             create_location, list_locations, delete_location, update_location, get_location,
             create_mqtt_broker, list_mqtt_brokers, delete_mqtt_broker, get_mqtt_broker, update_mqtt_broker,
+            create_icon, list_icons, get_icon, update_icon, delete_icon,
             create_device, list_devices, delete_device, get_device, check_device_by_mac, check_device_by_mac_for_adoption, get_device_by_mac, update_device,
             list_serial_ports, probe_device, adopt_device, get_default_broker_for_adoption,
             create_sensor_reading, create_sensor_reading_batch, list_sensor_readings,

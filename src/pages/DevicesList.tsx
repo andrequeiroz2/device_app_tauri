@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { deviceApi } from "@/services/deviceApi";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@iconify/react";
 import { Loader2, BarChart3, Cpu, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
@@ -100,7 +101,24 @@ export default function DevicesList() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {device.device_type === "sensor" ? (
+                      {device.icon?.iconify_id ? (
+                        <div
+                          className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0"
+                          style={{
+                            backgroundColor: device.icon.color
+                              ? `${device.icon.color}20`
+                              : "var(--muted)",
+                          }}
+                        >
+                          <Icon
+                            icon={device.icon.iconify_id}
+                            className="w-5 h-5"
+                            style={{
+                              color: device.icon.color ?? undefined,
+                            }}
+                          />
+                        </div>
+                      ) : device.device_type === "sensor" ? (
                         <BarChart3 className="w-5 h-5 text-muted-foreground shrink-0" />
                       ) : (
                         <Cpu className="w-5 h-5 text-muted-foreground shrink-0" />

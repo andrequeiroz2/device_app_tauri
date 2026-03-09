@@ -179,6 +179,48 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS icons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT NOT NULL UNIQUE,
+            code TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            iconify_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            color TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_icons_category ON icons(category);
+        CREATE INDEX IF NOT EXISTS idx_icons_active ON icons(is_active);
+
+        CREATE TRIGGER IF NOT EXISTS trg_icons_updated_at
+        AFTER UPDATE ON icons
+        FOR EACH ROW
+        BEGIN
+            UPDATE icons SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+        END;
+
+        -- Initial icons (sensors + actuators)
+        INSERT OR IGNORE INTO icons (uuid, code, name, iconify_id, category, color) VALUES
+            (lower(hex(randomblob(16))), 'thermometer', 'Temperature', 'mdi:thermometer', 'sensor', '#E53935'),
+            (lower(hex(randomblob(16))), 'droplets', 'Humidity', 'lucide:droplets', 'sensor', '#1E88E5'),
+            (lower(hex(randomblob(16))), 'wind', 'Air', 'mdi:wind-turbine', 'sensor', '#43A047'),
+            (lower(hex(randomblob(16))), 'flame', 'Gas', 'mdi:fire', 'sensor', '#FB8C00'),
+            (lower(hex(randomblob(16))), 'gauge', 'Pressure', 'mdi:gauge', 'sensor', '#8E24AA'),
+            (lower(hex(randomblob(16))), 'sun', 'Light', 'mdi:white-balance-sunny', 'sensor', '#FDD835'),
+            (lower(hex(randomblob(16))), 'activity', 'Monitoring', 'lucide:activity', 'sensor', '#00ACC1'),
+            (lower(hex(randomblob(16))), 'bar-chart', 'Data', 'mdi:chart-bar', 'sensor', '#5C6BC0'),
+            (lower(hex(randomblob(16))), 'power', 'On/Off', 'mdi:power', 'actuator', '#43A047'),
+            (lower(hex(randomblob(16))), 'toggle', 'Switch', 'mdi:toggle-switch', 'actuator', '#1E88E5'),
+            (lower(hex(randomblob(16))), 'robot', 'Robot', 'mdi:robot', 'actuator', '#7B1FA2'),
+            (lower(hex(randomblob(16))), 'lamp', 'Lamp', 'mdi:lightbulb', 'actuator', '#FDD835'),
+            (lower(hex(randomblob(16))), 'coil', 'Coil/Relay', 'mdi:flash', 'actuator', '#FB8C00'),
+            (lower(hex(randomblob(16))), 'fan', 'Fan', 'mdi:fan', 'actuator', '#26A69A'),
+            (lower(hex(randomblob(16))), 'lock', 'Lock', 'mdi:lock', 'actuator', '#5C6BC0'),
+            (lower(hex(randomblob(16))), 'cpu', 'Generic', 'mdi:cpu-64-bit', 'actuator', '#78909C');
+
         -- Initial sensor types
         INSERT OR IGNORE INTO sensor_types (code, name, description, default_scale) VALUES
             ('DHT11', 'DHT11 Temperature & Humidity', 'Low-cost digital temperature and humidity sensor', '[["temperature","C"],["humidity","%"]]'),
@@ -220,6 +262,7 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
             last_command TEXT,
             last_command_at TEXT,
             is_active BOOLEAN DEFAULT TRUE,
+            icon_id INTEGER REFERENCES icons(id),
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             
@@ -282,6 +325,11 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
     )
         .execute(pool)
         .await?;
+
+    // Migration: add icon_id to devices if missing (SQLite doesn't support ADD COLUMN IF NOT EXISTS)
+    let _ = sqlx::query("ALTER TABLE devices ADD COLUMN icon_id INTEGER REFERENCES icons(id)")
+        .execute(pool)
+        .await;
 
     Ok(())
 }

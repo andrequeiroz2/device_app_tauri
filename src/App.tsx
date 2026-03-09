@@ -34,6 +34,9 @@ import CollectorNotificationDetail from "./pages/CollectorNotificationDetail";
 import DevicesList from "./pages/DevicesList";
 import DeviceDashboard from "./pages/DeviceDashboard";
 import DeviceAdoptionWizard from "./pages/DeviceAdoptionWizard";
+import IconsList from "./pages/IconsList";
+import IconCreate from "./pages/IconCreate";
+import IconEdit from "./pages/IconEdit";
 
 const queryClient = new QueryClient();
 
@@ -117,12 +120,29 @@ const NavBar = () => {
             </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger className="hover:text-foreground transition-colors">
-                Devices
+                Device
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuItem asChild>
                   <Link to="/devices/list" className="w-full">
                     List
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="hover:text-foreground transition-colors">
+                Icon
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem asChild>
+                  <Link to="/icons" className="w-full">
+                    List
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/icons/create" className="w-full">
+                    Create
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -314,6 +334,30 @@ const App = () => (
                   element={
                     <ProtectedRoute>
                       <CollectorNotificationDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/icons"
+                  element={
+                    <ProtectedRoute>
+                      <IconsList />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/icons/create"
+                  element={
+                    <ProtectedRoute>
+                      <IconCreate />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/icons/:uuid/edit"
+                  element={
+                    <ProtectedRoute>
+                      <IconEdit />
                     </ProtectedRoute>
                   }
                 />

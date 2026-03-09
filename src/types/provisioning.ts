@@ -37,6 +37,7 @@ export type AdoptDeviceInput = {
   name: string;
   location_uuid: string;
   description?: string | null;
+  icon_uuid?: string | null;
   broker_url: string;
   wifi_ssid: string;
   wifi_password: string;
