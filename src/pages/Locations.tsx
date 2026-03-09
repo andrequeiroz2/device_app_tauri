@@ -1,6 +1,7 @@
 import { useState, useMemo, ChangeEvent, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Upload, ImageIcon, FileWarning, Loader2 } from "lucide-react";
+import { Upload, ImageIcon, FileWarning, Loader2, ArrowLeft } from "lucide-react";
 import { locationApi } from "@/services/locationApi";
 import { useAuth } from "@/context/AuthContext";
 import type { LocationCreateInput } from "@/types/location";
@@ -15,6 +16,7 @@ type FileState = {
 };
 
 const Locations = () => {
+  const navigate = useNavigate();
   const { token, logout } = useAuth();
   const [form, setForm] = useState<LocationCreateInput>({
     name: "",
@@ -95,11 +97,21 @@ const Locations = () => {
   return (
     <div className="min-h-screen bg-secondary/20 text-foreground">
       <div className="max-w-4xl mx-auto py-10 px-4 space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Location</h1>
-          <p className="text-muted-foreground text-sm">
-            Create a new location with address and floor plan (PNG/JPG/WEBP up to 5 MB).
-          </p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/locations/list")}
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-semibold">Location</h1>
+            <p className="text-muted-foreground text-sm">
+              Create a new location with address and floor plan (PNG/JPG/WEBP up to 5 MB).
+            </p>
+          </div>
         </div>
 
         <form

@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { locationApi } from "@/services/locationApi";
+import { deviceApi } from "@/services/deviceApi";
+import type { DevicePublic } from "@/types/device";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +17,26 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, ImageOff, AlertCircle, ArrowLeft } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Icon } from "@iconify/react";
+import {
+  Loader2,
+  ImageOff,
+  AlertCircle,
+  ArrowLeft,
+  MapPin,
+  BarChart3,
+  Cpu,
+  Lock,
+  LockOpen,
+  Info,
+} from "lucide-react";
 import { toast } from "sonner";
 import { LocationActionsPanel } from "@/components/LocationActionsPanel";
 
@@ -27,6 +48,25 @@ const LocationDetail = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
+  const [unallocatedDropdownOpen, setUnallocatedDropdownOpen] = useState(false);
+  const [pendingDevices, setPendingDevices] = useState<
+    Array<{ device: DevicePublic; position_x: number; position_y: number }>
+  >([]);
+  const [openBarDeviceUuid, setOpenBarDeviceUuid] = useState<string | null>(null);
+  const [confirmingDeviceUuid, setConfirmingDeviceUuid] = useState<string | null>(null);
+  const [editingAllocatedPositions, setEditingAllocatedPositions] = useState<
+    Record<string, { position_x: number; position_y: number }>
+  >({});
+  const [deviceInfoPopupDevice, setDeviceInfoPopupDevice] = useState<DevicePublic | null>(null);
+  const [dragState, setDragState] = useState<{
+    deviceUuid: string;
+    startClientX: number;
+    startClientY: number;
+    startPosX: number;
+    startPosY: number;
+  } | null>(null);
+  const overlayContainerRef = useRef<HTMLDivElement>(null);
+  const barAutoCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: location, isLoading, error: queryError } = useQuery({
     queryKey: ["location", uuid],
@@ -55,6 +95,216 @@ const LocationDetail = () => {
     enabled: !!uuid && !!token,
     retry: false,
   });
+
+  const { data: devicesData } = useQuery({
+    queryKey: ["devices", "location", uuid],
+    queryFn: async () => {
+      if (!token || !uuid) {
+        logout();
+        return null;
+      }
+      const result = await deviceApi.listDevices(token, {
+        page: 1,
+        page_size: 100,
+        filter: { location_uuid: uuid },
+      });
+      if (!result.success) {
+        if (result.unauthorized) {
+          toast.error("Session expired. Please login again.");
+          logout();
+          return null;
+        }
+        throw new Error(result.message ?? "Failed to load devices.");
+      }
+      return result.data ?? { items: [], total: 0, page: 1, page_size: 100 };
+    },
+    enabled: !!uuid && !!token,
+  });
+
+  const devices = devicesData?.items ?? [];
+  const { allocated, unallocated } = useMemo(() => {
+    const alloc: DevicePublic[] = [];
+    const unalloc: DevicePublic[] = [];
+    for (const d of devices) {
+      if (
+        d.position_x != null &&
+        d.position_y != null &&
+        typeof d.position_x === "number" &&
+        typeof d.position_y === "number"
+      ) {
+        alloc.push(d);
+      } else {
+        unalloc.push(d);
+      }
+    }
+    return { allocated: alloc, unallocated: unalloc };
+  }, [devices]);
+
+  const unallocatedToShow = useMemo(
+    () => unallocated.filter((d) => !pendingDevices.some((p) => p.device.uuid === d.uuid)),
+    [unallocated, pendingDevices]
+  );
+
+  const devicesOnImage = useMemo(() => {
+    const items: Array<{
+      device: DevicePublic;
+      position_x: number;
+      position_y: number;
+      isPending: boolean;
+      isEditingAllocated: boolean;
+    }> = [];
+    const clampPos = (v: number) => Math.min(95, Math.max(5, v));
+    for (const p of pendingDevices) {
+      items.push({
+        device: p.device,
+        position_x: clampPos(p.position_x),
+        position_y: clampPos(p.position_y),
+        isPending: true,
+        isEditingAllocated: false,
+      });
+    }
+    for (const d of allocated) {
+      const editPos = editingAllocatedPositions[d.uuid];
+      const px = clampPos(editPos?.position_x ?? d.position_x ?? 50);
+      const py = clampPos(editPos?.position_y ?? d.position_y ?? 50);
+      items.push({
+        device: d,
+        position_x: px,
+        position_y: py,
+        isPending: false,
+        isEditingAllocated: !!editPos,
+      });
+    }
+    return items;
+  }, [pendingDevices, allocated, editingAllocatedPositions]);
+
+  const handleConfirmAllocation = useCallback(
+    async (deviceUuid: string, position_x: number, position_y: number) => {
+      if (!token) return;
+      if (barAutoCloseTimeoutRef.current) {
+        clearTimeout(barAutoCloseTimeoutRef.current);
+        barAutoCloseTimeoutRef.current = null;
+      }
+      setConfirmingDeviceUuid(deviceUuid);
+      try {
+        const result = await deviceApi.updateDevice(token, {
+          uuid: deviceUuid,
+          position_x,
+          position_y,
+        });
+        if (!result.success) {
+          if (result.unauthorized) {
+            toast.error("Session expired. Please login again.");
+            logout();
+            return;
+          }
+          toast.error(result.message ?? "Failed to save position.");
+          return;
+        }
+        setPendingDevices((prev) => prev.filter((p) => p.device.uuid !== deviceUuid));
+        setEditingAllocatedPositions((prev) => {
+          const next = { ...prev };
+          delete next[deviceUuid];
+          return next;
+        });
+        setOpenBarDeviceUuid(null);
+        queryClient.invalidateQueries({ queryKey: ["devices", "location", uuid] });
+        toast.success("Device position saved.");
+      } finally {
+        setConfirmingDeviceUuid(null);
+      }
+    },
+    [token, logout, queryClient, uuid]
+  );
+
+  const handleDeviceSelectForAllocation = (device: DevicePublic) => {
+    setPendingDevices((prev) =>
+      prev.some((p) => p.device.uuid === device.uuid) ? prev : [...prev, { device, position_x: 50, position_y: 50 }]
+    );
+    setUnallocatedDropdownOpen(false);
+  };
+
+  const handleDragMove = useCallback(
+    (e: MouseEvent) => {
+      if (!dragState || !overlayContainerRef.current) return;
+      const rect = overlayContainerRef.current.getBoundingClientRect();
+      const deltaX = ((e.clientX - dragState.startClientX) / rect.width) * 100;
+      const deltaY = ((e.clientY - dragState.startClientY) / rect.height) * 100;
+      // Clamp para manter ícone inteiramente dentro da imagem (centro + metade do ícone)
+      const newX = Math.min(95, Math.max(5, dragState.startPosX + deltaX));
+      const newY = Math.min(95, Math.max(5, dragState.startPosY + deltaY));
+      setPendingDevices((prev) =>
+        prev.map((p) =>
+          p.device.uuid === dragState.deviceUuid
+            ? { ...p, position_x: newX, position_y: newY }
+            : p
+        )
+      );
+      setEditingAllocatedPositions((prev) => {
+        if (!(dragState.deviceUuid in prev)) return prev;
+        return { ...prev, [dragState.deviceUuid]: { position_x: newX, position_y: newY } };
+      });
+    },
+    [dragState]
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setDragState(null);
+  }, []);
+
+  const handleDragStart = useCallback(
+    (deviceUuid: string, position_x: number, position_y: number, e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      if (barAutoCloseTimeoutRef.current) {
+        clearTimeout(barAutoCloseTimeoutRef.current);
+        barAutoCloseTimeoutRef.current = null;
+      }
+      setDragState({
+        deviceUuid,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startPosX: position_x,
+        startPosY: position_y,
+      });
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!dragState) return;
+    const onMove = (e: MouseEvent) => handleDragMove(e);
+    const onUp = () => handleDragEnd();
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [dragState, handleDragMove, handleDragEnd]);
+
+  useEffect(() => {
+    if (!openBarDeviceUuid) return;
+    barAutoCloseTimeoutRef.current = setTimeout(() => {
+      setEditingAllocatedPositions((prev) => {
+        const next = { ...prev };
+        delete next[openBarDeviceUuid!];
+        return next;
+      });
+      setOpenBarDeviceUuid(null);
+      barAutoCloseTimeoutRef.current = null;
+    }, 5000);
+    return () => {
+      if (barAutoCloseTimeoutRef.current) {
+        clearTimeout(barAutoCloseTimeoutRef.current);
+        barAutoCloseTimeoutRef.current = null;
+      }
+    };
+  }, [openBarDeviceUuid]);
 
   const handleDelete = async () => {
     if (!token || !uuid) return;
@@ -198,6 +448,78 @@ const LocationDetail = () => {
             <h1 className="text-2xl font-semibold">{location.name}</h1>
           </div>
           <div className="flex items-center gap-2">
+            {unallocated.length > 0 && (
+              <DropdownMenu open={unallocatedDropdownOpen} onOpenChange={setUnallocatedDropdownOpen}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label={`${unallocatedToShow.length} device(s) to allocate`}
+                    className="relative"
+                  >
+                    <MapPin className="w-5 h-5" />
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-medium px-1">
+                      {unallocatedToShow.length > 99 ? "99+" : unallocatedToShow.length}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="z-50 w-80 max-h-[400px] overflow-y-auto">
+                  <div className="px-2 py-2 text-sm font-medium text-muted-foreground">
+                    Devices to allocate
+                  </div>
+                  <DropdownMenuSeparator />
+                  {unallocatedToShow.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-muted-foreground text-sm">
+                      {pendingDevices.length > 0
+                        ? "All selected devices are pending allocation"
+                        : "No devices to allocate"}
+                    </div>
+                  ) : (
+                    unallocatedToShow.map((device) => (
+                      <DropdownMenuItem
+                        key={device.uuid}
+                        onClick={() => handleDeviceSelectForAllocation(device)}
+                        className="flex flex-col items-start gap-1 py-2 cursor-pointer hover:bg-muted/70 focus:bg-muted/70"
+                      >
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            {device.icon?.iconify_id ? (
+                              <div
+                                className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0"
+                                style={{
+                                  backgroundColor: device.icon.color
+                                    ? `${device.icon.color}20`
+                                    : "var(--muted)",
+                                }}
+                              >
+                                <Icon
+                                  icon={device.icon.iconify_id}
+                                  className="w-5 h-5"
+                                  style={{ color: device.icon.color ?? undefined }}
+                                />
+                              </div>
+                            ) : device.device_type === "sensor" ? (
+                              <BarChart3 className="w-5 h-5 text-muted-foreground shrink-0" />
+                            ) : (
+                              <Cpu className="w-5 h-5 text-muted-foreground shrink-0" />
+                            )}
+                            <span className="font-medium truncate">{device.name}</span>
+                          </div>
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0 capitalize">
+                            {device.device_type}
+                          </span>
+                        </div>
+                        {device.model && (
+                          <span className="text-xs text-muted-foreground line-clamp-1">
+                            {device.model}
+                          </span>
+                        )}
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {location.is_active && (
               <Button
                 variant="outline"
@@ -219,16 +541,136 @@ const LocationDetail = () => {
         </div>
 
       <div className="border border-border rounded-xl bg-card overflow-hidden">
-        <div className="w-full bg-secondary/40 flex items-center justify-center min-h-[400px] max-h-[70vh] overflow-auto">
+        <div className="relative w-full bg-secondary/40 flex items-center justify-center min-h-[400px] max-h-[70vh] overflow-hidden">
           {imageSrc ? (
-            <img
-              src={imageSrc}
-              alt={location.name}
-              className="w-full h-auto object-contain"
-              onError={(e) => {
-                e.currentTarget.src = fallback;
-              }}
-            />
+            <>
+              <img
+                src={imageSrc}
+                alt={location.name}
+                className="w-full h-auto object-contain"
+                onError={(e) => {
+                  e.currentTarget.src = fallback;
+                }}
+              />
+              <div className="absolute inset-0 pointer-events-none">
+                <div ref={overlayContainerRef} className="relative w-full h-full">
+                  {devicesOnImage.map(
+                    ({ device, position_x, position_y, isPending, isEditingAllocated }) => {
+                    const isBarOpen = openBarDeviceUuid === device.uuid;
+                    const canDrag = isBarOpen && (isPending || isEditingAllocated);
+                    return (
+                      <div
+                        key={device.uuid}
+                        className={`absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2 pointer-events-auto ${
+                          canDrag
+                            ? dragState?.deviceUuid === device.uuid
+                              ? "cursor-grabbing"
+                              : "cursor-grab"
+                            : "cursor-pointer"
+                        }`}
+                        style={{
+                          left: `${position_x}%`,
+                          top: `${position_y}%`,
+                        }}
+                        title={device.name}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          setOpenBarDeviceUuid((prev) => {
+                            if (prev === device.uuid) {
+                              setEditingAllocatedPositions((p) => {
+                                const next = { ...p };
+                                delete next[device.uuid];
+                                return next;
+                              });
+                              return null;
+                            }
+                            return device.uuid;
+                          });
+                        }}
+                      >
+                        {isBarOpen && (
+                          <div
+                            className="flex items-center gap-1 mb-1 px-2 py-1 rounded-md bg-popover border border-border shadow-md pointer-events-auto"
+                            onDoubleClick={(e) => e.stopPropagation()}
+                          >
+                            {isPending || isEditingAllocated ? (
+                              <button
+                                type="button"
+                                className="p-1 rounded hover:bg-accent disabled:opacity-50"
+                                aria-label={isPending ? "Confirm allocation" : "Save position"}
+                                disabled={confirmingDeviceUuid === device.uuid}
+                                onClick={() =>
+                                  handleConfirmAllocation(device.uuid, position_x, position_y)
+                                }
+                              >
+                                {confirmingDeviceUuid === device.uuid ? (
+                                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                                ) : (
+                                  <LockOpen className="w-4 h-4 text-muted-foreground" />
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="p-1 rounded hover:bg-accent"
+                                aria-label="Edit position"
+                                onClick={() =>
+                                  setEditingAllocatedPositions((prev) => ({
+                                    ...prev,
+                                    [device.uuid]: { position_x, position_y },
+                                  }))
+                                }
+                              >
+                                <Lock className="w-4 h-4 text-muted-foreground" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="p-1 rounded hover:bg-accent"
+                              aria-label="Device info"
+                              onClick={() => setDeviceInfoPopupDevice(device)}
+                            >
+                              <Info className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                          </div>
+                        )}
+                        <div
+                          className="w-10 h-10 flex items-center justify-center rounded-lg select-none"
+                          style={{
+                            backgroundColor: device.icon?.color
+                              ? `${device.icon.color}${isPending ? "40" : "20"}`
+                              : "var(--muted)",
+                            opacity: isPending ? 0.6 : 1,
+                          }}
+                          onMouseDown={
+                            canDrag
+                              ? (e) => {
+                                  e.stopPropagation();
+                                  handleDragStart(device.uuid, position_x, position_y, e);
+                                }
+                              : undefined
+                          }
+                        >
+                          {device.icon?.iconify_id ? (
+                            <Icon
+                              icon={device.icon.iconify_id}
+                              className="w-6 h-6"
+                              style={{
+                                color: device.icon.color ?? "var(--muted-foreground)",
+                              }}
+                            />
+                          ) : device.device_type === "sensor" ? (
+                            <BarChart3 className="w-6 h-6 text-muted-foreground" />
+                          ) : (
+                            <Cpu className="w-6 h-6 text-muted-foreground" />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
           ) : (
             <div className="flex flex-col items-center gap-2 text-muted-foreground py-16">
               <ImageOff className="w-12 h-12" />
@@ -237,6 +679,78 @@ const LocationDetail = () => {
           )}
         </div>
       </div>
+
+      <AlertDialog
+        open={!!deviceInfoPopupDevice}
+        onOpenChange={(open) => !open && setDeviceInfoPopupDevice(null)}
+      >
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Device Information</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              {deviceInfoPopupDevice && (
+                <div className="space-y-3 pt-2 text-left">
+                  <div>
+                    <p className="font-semibold text-foreground mb-0.5">Name</p>
+                    <p className="text-sm text-muted-foreground">{deviceInfoPopupDevice.name}</p>
+                  </div>
+                  {deviceInfoPopupDevice.description && (
+                    <div>
+                      <p className="font-semibold text-foreground mb-0.5">Description</p>
+                      <p className="text-sm text-muted-foreground">
+                        {deviceInfoPopupDevice.description}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-semibold text-foreground mb-0.5">Type</p>
+                    <p className="text-sm text-muted-foreground capitalize">
+                      {deviceInfoPopupDevice.device_type}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground mb-0.5">Model</p>
+                    <p className="text-sm text-muted-foreground">{deviceInfoPopupDevice.model}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground mb-0.5">MAC Address</p>
+                    <p className="text-sm text-muted-foreground font-mono">
+                      {deviceInfoPopupDevice.mac_address}
+                    </p>
+                  </div>
+                  {deviceInfoPopupDevice.operation_status && (
+                    <div>
+                      <p className="font-semibold text-foreground mb-0.5">Status</p>
+                      <p className="text-sm text-muted-foreground capitalize">
+                        {deviceInfoPopupDevice.operation_status}
+                      </p>
+                    </div>
+                  )}
+                  {deviceInfoPopupDevice.sensor_type && (
+                    <div>
+                      <p className="font-semibold text-foreground mb-0.5">Sensor Type</p>
+                      <p className="text-sm text-muted-foreground">
+                        {deviceInfoPopupDevice.sensor_type}
+                      </p>
+                    </div>
+                  )}
+                  {deviceInfoPopupDevice.actuator_type && (
+                    <div>
+                      <p className="font-semibold text-foreground mb-0.5">Actuator Type</p>
+                      <p className="text-sm text-muted-foreground">
+                        {deviceInfoPopupDevice.actuator_type}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button onClick={() => setDeviceInfoPopupDevice(null)}>Close</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

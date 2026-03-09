@@ -38,7 +38,7 @@ pub async fn device_post_query(
             adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
             status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
             heartbeat_interval, offline_threshold, last_command, last_command_at,
-            is_active, icon_id, created_at, updated_at
+            is_active, icon_id, position_x, position_y, created_at, updated_at
         "#,
     )
     .bind(&device.uuid)
@@ -143,7 +143,7 @@ pub async fn device_list_query(
             adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
             status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
             heartbeat_interval, offline_threshold, last_command, last_command_at,
-            is_active, icon_id, created_at, updated_at
+            is_active, icon_id, position_x, position_y, created_at, updated_at
         FROM devices
         WHERE {}
         ORDER BY created_at DESC
@@ -244,7 +244,7 @@ pub async fn device_get_by_mac_query(
             adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
             status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
             heartbeat_interval, offline_threshold, last_command, last_command_at,
-            is_active, icon_id, created_at, updated_at
+            is_active, icon_id, position_x, position_y, created_at, updated_at
         FROM devices
         WHERE REPLACE(REPLACE(UPPER(mac_address), ':', ''), '-', '') = ?1 AND user_id = ?2 AND is_active = 1
         "#,
@@ -275,7 +275,7 @@ pub async fn device_get_by_mac_any_user_query(
             adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
             status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
             heartbeat_interval, offline_threshold, last_command, last_command_at,
-            is_active, icon_id, created_at, updated_at
+            is_active, icon_id, position_x, position_y, created_at, updated_at
         FROM devices
         WHERE REPLACE(REPLACE(UPPER(mac_address), ':', ''), '-', '') = ?1 AND is_active = 1
         "#,
@@ -305,7 +305,7 @@ pub async fn device_get_by_uuid_query(
             adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
             status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
             heartbeat_interval, offline_threshold, last_command, last_command_at,
-            is_active, icon_id, created_at, updated_at
+            is_active, icon_id, position_x, position_y, created_at, updated_at
         FROM devices
         WHERE uuid = ?1 AND user_id = ?2
         "#,
@@ -387,6 +387,14 @@ pub async fn device_update_query(
         set_clauses.push(format!("is_active = ?{}", bind_index));
         bind_index += 1;
     }
+    if update_data.position_x.is_some() {
+        set_clauses.push(format!("position_x = ?{}", bind_index));
+        bind_index += 1;
+    }
+    if update_data.position_y.is_some() {
+        set_clauses.push(format!("position_y = ?{}", bind_index));
+        bind_index += 1;
+    }
 
     if set_clauses.is_empty() {
         return Err("No fields to update".to_string());
@@ -407,7 +415,7 @@ pub async fn device_update_query(
             adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
             status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
             heartbeat_interval, offline_threshold, last_command, last_command_at,
-            is_active, icon_id, created_at, updated_at
+            is_active, icon_id, position_x, position_y, created_at, updated_at
         "#,
         set_clause, uuid_bind, user_id_bind
     );
@@ -452,6 +460,12 @@ pub async fn device_update_query(
     }
     if let Some(is_active) = update_data.is_active {
         query_builder = query_builder.bind(is_active);
+    }
+    if let Some(position_x) = update_data.position_x {
+        query_builder = query_builder.bind(position_x);
+    }
+    if let Some(position_y) = update_data.position_y {
+        query_builder = query_builder.bind(position_y);
     }
 
     query_builder = query_builder.bind(device_uuid).bind(user_id);

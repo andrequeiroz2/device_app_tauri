@@ -6,6 +6,7 @@ import type {
   DeviceCommandsChartFilter,
   DeviceListParams,
   DeviceListResponse,
+  DeviceUpdateInput,
 } from "@/types/device";
 
 const normalizeMessage = (msg: unknown): string => {
@@ -121,6 +122,40 @@ export const deviceApi = {
       const resp = await invoke<ApiResponse<DevicePublic>>("get_device", {
         token,
         deviceUuid: uuid,
+      });
+
+      if (!resp.success) {
+        const message = normalizeMessage(resp.message);
+        return {
+          success: false,
+          message,
+          unauthorized: message.toLowerCase().includes("unauthorized"),
+        };
+      }
+
+      return {
+        success: true,
+        data: resp.data,
+        message: resp.message,
+      };
+    } catch (err) {
+      const message = normalizeMessage(err);
+      return {
+        success: false,
+        message,
+        unauthorized: message.toLowerCase().includes("unauthorized"),
+      };
+    }
+  },
+
+  async updateDevice(
+    token: string,
+    payload: DeviceUpdateInput
+  ): Promise<GetDeviceResult> {
+    try {
+      const resp = await invoke<ApiResponse<DevicePublic>>("update_device", {
+        token,
+        payload,
       });
 
       if (!resp.success) {

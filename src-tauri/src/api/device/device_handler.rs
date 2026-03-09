@@ -72,6 +72,8 @@ fn device_to_public(
         last_command_at: device.last_command_at,
         is_active: device.is_active,
         icon,
+        position_x: device.position_x,
+        position_y: device.position_y,
         created_at: device.created_at,
         updated_at: device.updated_at,
     }
@@ -176,6 +178,13 @@ pub async fn list_devices_handler(
     let page = params.page.unwrap_or(1).max(1);
     let page_size = params.page_size.unwrap_or(10).clamp(1, 50);
 
+    if let Some(ref loc_uuid) = params.filter.location_uuid {
+        info!(
+            location_uuid = %loc_uuid,
+            "list_devices_handler: filter by location_uuid"
+        );
+    }
+
     let devices = device_list_query(user.id, page, page_size, &params.filter, pool)
         .await
         .map_err(ApiError::err)?;
@@ -250,7 +259,9 @@ pub async fn update_device_handler(
         || input.lwt_qos.is_some()
         || input.lwt_retain.is_some()
         || input.heartbeat_interval.is_some()
-        || input.offline_threshold.is_some();
+        || input.offline_threshold.is_some()
+        || input.position_x.is_some()
+        || input.position_y.is_some();
 
     if !existing.is_active && has_other_updates && !is_activating {
         error!("update_device_handler: trying to update inactive device");

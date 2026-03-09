@@ -34,6 +34,8 @@ export type DevicePublic = {
   last_command_at?: string | null;
   is_active: boolean;
   icon?: IconPublic | null;
+  position_x?: number | null;
+  position_y?: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -69,4 +71,14 @@ export type DeviceListResponse = {
   total: number;
   page: number;
   page_size: number;
+};
+
+export type DeviceUpdateInput = {
+  uuid: string;
+  name?: string | null;
+  description?: string | null;
+  location_uuid?: string | null;
+  position_x?: number | null;
+  position_y?: number | null;
+  is_active?: boolean | null;
 };

@@ -263,6 +263,8 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
             last_command_at TEXT,
             is_active BOOLEAN DEFAULT TRUE,
             icon_id INTEGER REFERENCES icons(id),
+            position_x REAL,
+            position_y REAL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             
@@ -330,6 +332,10 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
     let _ = sqlx::query("ALTER TABLE devices ADD COLUMN icon_id INTEGER REFERENCES icons(id)")
         .execute(pool)
         .await;
+
+    // Migration: add position_x, position_y for device placement on location image (Task_Device_Position_In_Location)
+    let _ = sqlx::query("ALTER TABLE devices ADD COLUMN position_x REAL").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE devices ADD COLUMN position_y REAL").execute(pool).await;
 
     Ok(())
 }

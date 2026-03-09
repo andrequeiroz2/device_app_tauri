@@ -79,6 +79,8 @@ pub struct Device {
     pub last_command_at: Option<String>,
     pub is_active: bool,
     pub icon_id: Option<i64>,
+    pub position_x: Option<f64>,
+    pub position_y: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -127,6 +129,10 @@ pub struct DevicePublic {
     pub is_active: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<DeviceIconPublic>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_y: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -163,6 +169,8 @@ pub struct DeviceUpdateInput {
     pub heartbeat_interval: Option<i32>,
     pub offline_threshold: Option<i32>,
     pub is_active: Option<bool>,
+    pub position_x: Option<f64>,
+    pub position_y: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -281,6 +289,8 @@ pub struct DeviceUpdateDB {
     pub heartbeat_interval: Option<i32>,
     pub offline_threshold: Option<i32>,
     pub is_active: Option<bool>,
+    pub position_x: Option<f64>,
+    pub position_y: Option<f64>,
 }
 
 #[derive(Debug, FromRow)]
@@ -405,7 +415,9 @@ impl DeviceUpdateInput {
             || self.lwt_retain.is_some()
             || self.heartbeat_interval.is_some()
             || self.offline_threshold.is_some()
-            || self.is_active.is_some();
+            || self.is_active.is_some()
+            || self.position_x.is_some()
+            || self.position_y.is_some();
 
         if !has_updates {
             return Err("At least one field must be provided for update".to_string());
@@ -454,6 +466,17 @@ impl DeviceUpdateInput {
             }
         }
 
+        if let Some(x) = self.position_x {
+            if !(0.0..=100.0).contains(&x) {
+                return Err("position_x must be between 0 and 100".to_string());
+            }
+        }
+        if let Some(y) = self.position_y {
+            if !(0.0..=100.0).contains(&y) {
+                return Err("position_y must be between 0 and 100".to_string());
+            }
+        }
+
         Ok(())
     }
 
@@ -472,6 +495,8 @@ impl DeviceUpdateInput {
             heartbeat_interval: self.heartbeat_interval,
             offline_threshold: self.offline_threshold,
             is_active: self.is_active,
+            position_x: self.position_x,
+            position_y: self.position_y,
         }
     }
 }
