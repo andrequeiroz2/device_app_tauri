@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { sensorReadingApi } from "@/services/sensorReadingApi";
 import { useAuth } from "@/context/AuthContext";
+
+export const SENSOR_READING_LATEST_QUERY_KEY = ["sensor-reading-latest"] as const;
 
 type CurrentValueCardProps = {
   deviceUuid: string;
@@ -13,38 +15,34 @@ export function CurrentValueCard({
   measurement,
   scale,
 }: CurrentValueCardProps) {
-  const { token } = useAuth();
-  const [value, setValue] = useState<number | null>(null);
-  const [recordedAt, setRecordedAt] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { token, logout } = useAuth();
 
-  useEffect(() => {
-    if (!token) return;
-
-    const load = async () => {
-      setLoading(true);
+  const { data, isLoading } = useQuery({
+    queryKey: [...SENSOR_READING_LATEST_QUERY_KEY, deviceUuid, measurement],
+    queryFn: async () => {
+      if (!token) {
+        logout();
+        return null;
+      }
       const result = await sensorReadingApi.getSensorReadingLatest(
         token,
         deviceUuid,
         measurement
       );
-      setLoading(false);
+      if (result.unauthorized) logout();
+      return result.success ? result.data ?? null : null;
+    },
+    enabled: !!token && !!deviceUuid && !!measurement,
+  });
 
-      if (result.success && result.data) {
-        setValue(result.data.value);
-        setRecordedAt(result.data.recorded_at);
-      }
-    };
-
-    load();
-  }, [token, deviceUuid, measurement]);
-
+  const value = data?.value ?? null;
+  const recordedAt = data?.recorded_at ?? null;
   const label = measurement.charAt(0).toUpperCase() + measurement.slice(1);
 
   return (
     <div className="rounded-lg border bg-card p-4">
       <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      {loading ? (
+      {isLoading ? (
         <p className="text-2xl font-bold mt-1">...</p>
       ) : value !== null ? (
         <>

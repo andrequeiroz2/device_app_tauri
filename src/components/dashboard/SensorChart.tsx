@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   LineChart,
   Line,
@@ -15,6 +15,8 @@ export type ChartDataPoint = {
   time: string;
   value: number;
 };
+
+export const SENSOR_READINGS_QUERY_KEY = ["sensor-readings"] as const;
 
 type SensorChartProps = {
   deviceUuid: string;
@@ -56,15 +58,15 @@ export function SensorChart({
   scale,
   period = "today",
 }: SensorChartProps) {
-  const { token } = useAuth();
-  const [data, setData] = useState<ChartDataPoint[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { token, logout } = useAuth();
 
-  useEffect(() => {
-    if (!token) return;
-
-    const load = async () => {
-      setLoading(true);
+  const { data = [], isLoading } = useQuery({
+    queryKey: [...SENSOR_READINGS_QUERY_KEY, deviceUuid, measurement, period],
+    queryFn: async () => {
+      if (!token) {
+        logout();
+        return [];
+      }
       const { start, end } = getPeriodDates(period);
       const result = await sensorReadingApi.listSensorReadings(token, {
         device_uuid: deviceUuid,
@@ -73,24 +75,20 @@ export function SensorChart({
         end_date: end,
         limit: 500,
       });
-      setLoading(false);
-
-      if (!result.success || !result.data) return;
-
-      const chartData: ChartDataPoint[] = result.data.map((r) => ({
+      if (result.unauthorized) logout();
+      if (!result.success || !result.data) return [];
+      return result.data.map((r): ChartDataPoint => ({
         time: new Date(r.recorded_at).toLocaleTimeString(undefined, {
           hour: "2-digit",
           minute: "2-digit",
         }),
         value: r.value,
       }));
-      setData(chartData);
-    };
+    },
+    enabled: !!token && !!deviceUuid && !!measurement,
+  });
 
-    load();
-  }, [token, deviceUuid, measurement, period]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="h-64 flex items-center justify-center text-muted-foreground">
         Loading chart...

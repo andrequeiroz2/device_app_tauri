@@ -173,12 +173,36 @@ Formato: `[["measurement", "unit"], ...]`
 
 | Tipo | Tópico | Direção | Payload |
 |------|--------|---------|---------|
-| Heartbeat/Status | `{topic}/status` | Publish | `{"state":"online","timestamp":"..."}` |
+| Heartbeat/Status | `{topic}/status` | Publish | `{"state":"online","timestamp":"..."}` ou `{"state":"offline"}` |
 | Dados (sensor) | `{topic}/data` | Publish | `{"temperature":25.5,"humidity":60,"timestamp":"..."}` |
-| Comando (actuator) | `{topic}/command` | Subscribe | `{"action":"ON"}` ou `{"action":"OFF"}` |
-| Status (actuator) | `{topic}/status` | Publish | `{"state":"ON","timestamp":"..."}` |
+| Dados (actuator, futuro) | `{topic}/data` | Publish | Ex.: `{"setpoint":25}` ou `{"output":40}` — estado/setpoint do atuador |
+| Comando (actuator) | `{topic}/command` | Subscribe | Varia por `actuator_type`; device recebe |
 
 **Exemplo:** `a8b16f77-abe2-.../a6f53396-eab9-.../status`
+
+**Status vs Comando:**
+- `/status` indica **conectividade** (`online` ou `offline`) — igual para sensor e atuador. O device **não** publica ON/OFF em `/status`.
+- `/command` contém **comandos** enviados pelo app ao device. O formato depende do `actuator_type`:
+  - **ON/OFF (relay, switch):** `{"action":"ON"}` ou `{"action":"OFF"}`
+  - **Valores numéricos (futuro, ex. termostato, válvula):** `{"action":"set_temp","value":25}` ou `{"value":40}` — estruturas extensíveis
+- `/data` (actuadores): Atuadores ON/OFF hoje não publicam em `/data`. Atuadores futuros (termostato, dimmer etc.) podem publicar estado/setpoint, ex.: `{"setpoint":25}` (5°C, 40°C etc.), para o dashboard exibir o valor atual
+
+### LWT (Last Will and Testament)
+
+O device **DEVE** configurar LWT ao conectar para que, em perda inesperada de conexão (queda de energia, rede, crash), o broker publique automaticamente o estado offline. Sem LWT, o `operation_status` permanece `online` indefinidamente.
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| Tópico | `{topic}/status` | Mesmo do heartbeat |
+| Payload | `{"state":"offline"}` | Compatível com status_processor do collector |
+| QoS | 1 | Recomendado |
+| Retain | true | Última mensagem reflete o estado real |
+
+O LWT só é publicado pelo broker quando o cliente é declarado morto (ex.: ausência de PINGREQ dentro do keep-alive). Em desconexão graciosa (`disconnect()`), o device deve publicar `{"state":"offline"}` manualmente antes de desconectar.
+
+**Validação:** Executar `scripts/simulate_esp32_device.py`, matar com `kill -9 <pid>`, verificar no app que `operation_status` passa para `offline`.
+
+**Nota sobre set_config:** O payload de adoção não inclui LWT. O firmware usa sempre o payload fixo `{"state":"offline"}` no LWT, compatível com o status_processor do collector. O device no banco pode ter `lwt_enabled`, `lwt_message` etc. (para exibição/UI), mas o firmware não os lê — usa LWT fixo por simplicidade.
 
 ---
 

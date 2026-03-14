@@ -146,6 +146,56 @@ pub async fn set_broker_as_default_query(
     Ok(())
 }
 
+/// Gets device id and device_scale by uuid (no user filter - for collector context).
+/// Returns (device_id, device_scale_json).
+#[instrument(skip(pool), fields(device_uuid = %device_uuid))]
+pub async fn get_device_id_and_scale_by_uuid_query(
+    pool: &Pool<Sqlite>,
+    device_uuid: &str,
+) -> Result<(i64, Option<String>), String> {
+    let row: Option<(i64, Option<String>)> = sqlx::query_as(
+        r#"SELECT id, device_scale FROM devices WHERE uuid = ?1 AND is_active = 1"#,
+    )
+    .bind(device_uuid)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, device_uuid = %device_uuid, "Failed to get device by uuid");
+        format!("Failed to get device: {}", e)
+    })?;
+
+    row.ok_or_else(|| "Device not found".to_string())
+}
+
+/// Atualiza operation_status e last_seen_at do device por uuid.
+/// Retorna número de linhas afetadas (0 se device não existir).
+#[instrument(skip(pool), fields(device_uuid = %device_uuid))]
+pub async fn update_device_operation_status_by_uuid_query(
+    pool: &Pool<Sqlite>,
+    device_uuid: &str,
+    operation_status: &str,
+    last_seen_at: &str,
+) -> Result<u64, String> {
+    let result = sqlx::query(
+        r#"
+        UPDATE devices
+        SET operation_status = ?1, last_seen_at = ?2
+        WHERE uuid = ?3 AND is_active = 1
+        "#,
+    )
+    .bind(operation_status)
+    .bind(last_seen_at)
+    .bind(device_uuid)
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, device_uuid = %device_uuid, "Failed to update device operation status");
+        format!("Failed to update device: {}", e)
+    })?;
+
+    Ok(result.rows_affected())
+}
+
 #[instrument(skip(pool), fields(topic = %topic))]
 pub async fn save_mqtt_message_query(
     topic: &str,

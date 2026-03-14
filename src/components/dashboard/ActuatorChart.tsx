@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   AreaChart,
   Area,
@@ -18,6 +18,8 @@ type ChartDataPoint = {
   value: number;
   source: string;
 };
+
+export const DEVICE_COMMANDS_CHART_QUERY_KEY = ["device-commands-chart"] as const;
 
 type ActuatorChartProps = {
   deviceUuid: string;
@@ -52,15 +54,15 @@ function getPeriodDates(period: "today" | "7d" | "30d"): { start: string; end: s
 }
 
 export function ActuatorChart({ deviceUuid, period = "today" }: ActuatorChartProps) {
-  const { token } = useAuth();
-  const [data, setData] = useState<ChartDataPoint[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { token, logout } = useAuth();
 
-  useEffect(() => {
-    if (!token) return;
-
-    const load = async () => {
-      setLoading(true);
+  const { data = [], isLoading } = useQuery({
+    queryKey: [...DEVICE_COMMANDS_CHART_QUERY_KEY, deviceUuid, period],
+    queryFn: async () => {
+      if (!token) {
+        logout();
+        return [];
+      }
       const { start, end } = getPeriodDates(period);
       const result = await deviceApi.getDeviceCommandsForChart(token, {
         device_uuid: deviceUuid,
@@ -68,11 +70,9 @@ export function ActuatorChart({ deviceUuid, period = "today" }: ActuatorChartPro
         end_date: end,
         limit: 500,
       });
-      setLoading(false);
-
-      if (!result.success || !result.data) return;
-
-      const chartData: ChartDataPoint[] = result.data.map((cmd) => ({
+      if (result.unauthorized) logout();
+      if (!result.success || !result.data) return [];
+      return result.data.map((cmd): ChartDataPoint => ({
         time: new Date(cmd.sent_at).toLocaleTimeString(undefined, {
           hour: "2-digit",
           minute: "2-digit",
@@ -82,13 +82,11 @@ export function ActuatorChart({ deviceUuid, period = "today" }: ActuatorChartPro
         value: cmd.command.toUpperCase() === "ON" ? 1 : 0,
         source: cmd.source ?? "manual",
       }));
-      setData(chartData);
-    };
+    },
+    enabled: !!token && !!deviceUuid,
+  });
 
-    load();
-  }, [token, deviceUuid, period]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="h-64 flex items-center justify-center text-muted-foreground">
         Loading chart...

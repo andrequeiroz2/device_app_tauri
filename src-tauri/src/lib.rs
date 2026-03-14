@@ -1674,7 +1674,7 @@ pub fn run() {
             // Collector: start collector (idle state) + notification listener
             let pool = app.state::<Pool<Sqlite>>().inner().clone();
             let pool_for_listener = pool.clone();
-            let collector_result = tauri::async_runtime::block_on(start_collector(pool))
+            let collector_result = tauri::async_runtime::block_on(start_collector(pool, handle.clone()))
                 .map_err(|e| {
                     tauri::Error::from(std::io::Error::new(
                         std::io::ErrorKind::Other,

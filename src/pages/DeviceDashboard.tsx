@@ -1,8 +1,12 @@
-import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { listen } from "@tauri-apps/api/event";
 import { deviceApi } from "@/services/deviceApi";
 import { useAuth } from "@/context/AuthContext";
+import { SENSOR_READING_LATEST_QUERY_KEY } from "@/components/dashboard/CurrentValueCard";
+import { SENSOR_READINGS_QUERY_KEY } from "@/components/dashboard/SensorChart";
+import { DEVICE_COMMANDS_CHART_QUERY_KEY } from "@/components/dashboard/ActuatorChart";
 import { SensorChart } from "@/components/dashboard/SensorChart";
 import { CurrentValueCard } from "@/components/dashboard/CurrentValueCard";
 import { ActuatorChart } from "@/components/dashboard/ActuatorChart";
@@ -102,11 +106,63 @@ function ActuatorDashboard({
   );
 }
 
+const DEVICE_DASHBOARD_UPDATE_EVENT = "device-dashboard-update";
+
+const DEBOUNCE_MS = 500;
+
 export default function DeviceDashboard() {
   const { uuid } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { token, logout } = useAuth();
+  const queryClient = useQueryClient();
   const [period, setPeriod] = useState<PeriodFilter>("today");
+  const pathnameRef = useRef(location.pathname);
+  pathnameRef.current = location.pathname;
+
+  // Real-time: invalidate queries when backend emits device-dashboard-update
+  useEffect(() => {
+    if (!token) return;
+
+    const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+    const unlistenPromise = listen<{ device_uuid: string }>(
+      DEVICE_DASHBOARD_UPDATE_EVENT,
+      (event) => {
+        const deviceUuid = event.payload?.device_uuid;
+        if (!deviceUuid) return;
+
+        // 4.3: só invalidar se o usuário estiver na tela do dashboard deste device
+        if (pathnameRef.current !== `/devices/${deviceUuid}/dashboard`) return;
+
+        // 4.2: debounce para evitar refetch excessivo
+        const existing = debounceTimers.get(deviceUuid);
+        if (existing) clearTimeout(existing);
+
+        const timer = setTimeout(() => {
+          debounceTimers.delete(deviceUuid);
+          queryClient.invalidateQueries({ queryKey: ["device", deviceUuid] });
+          queryClient.invalidateQueries({
+            queryKey: [...SENSOR_READING_LATEST_QUERY_KEY, deviceUuid],
+          });
+          queryClient.invalidateQueries({
+            queryKey: [...SENSOR_READINGS_QUERY_KEY, deviceUuid],
+          });
+          queryClient.invalidateQueries({
+            queryKey: [...DEVICE_COMMANDS_CHART_QUERY_KEY, deviceUuid],
+          });
+        }, DEBOUNCE_MS);
+
+        debounceTimers.set(deviceUuid, timer);
+      }
+    );
+
+    return () => {
+      debounceTimers.forEach((t) => clearTimeout(t));
+      debounceTimers.clear();
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [token, queryClient]);
 
   const {
     data: device,

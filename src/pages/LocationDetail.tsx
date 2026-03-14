@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { locationApi } from "@/services/locationApi";
@@ -39,11 +39,18 @@ import {
   BarChart2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { listen } from "@tauri-apps/api/event";
 import { LocationActionsPanel } from "@/components/LocationActionsPanel";
+import { DeviceIconStatusBar } from "@/components/DeviceIconStatusBar";
+import { SENSOR_READING_LATEST_ALL_QUERY_KEY } from "@/components/DeviceIconStatusBar";
+
+const DEVICE_DASHBOARD_UPDATE_EVENT = "device-dashboard-update";
+const DEBOUNCE_MS = 500;
 
 const LocationDetail = () => {
   const { uuid } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { token, logout } = useAuth();
   const queryClient = useQueryClient();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -68,6 +75,8 @@ const LocationDetail = () => {
   } | null>(null);
   const overlayContainerRef = useRef<HTMLDivElement>(null);
   const barAutoCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   const { data: location, isLoading, error: queryError } = useQuery({
     queryKey: ["location", uuid],
@@ -306,6 +315,46 @@ const LocationDetail = () => {
       }
     };
   }, [openBarDeviceUuid]);
+
+  // Fase 3: atualização em tempo real da barra de status dos devices
+  const deviceUuidsRef = useRef<Set<string>>(new Set());
+  deviceUuidsRef.current = new Set(devicesData?.items?.map((d) => d.uuid) ?? []);
+
+  useEffect(() => {
+    if (!token || !uuid) return;
+
+    const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+    const unlistenPromise = listen<{ device_uuid: string }>(
+      DEVICE_DASHBOARD_UPDATE_EVENT,
+      (event) => {
+        const deviceUuid = event.payload?.device_uuid;
+        if (!deviceUuid) return;
+
+        if (pathnameRef.current !== `/locations/${uuid}`) return;
+        if (!deviceUuidsRef.current.has(deviceUuid)) return;
+
+        const existing = debounceTimers.get(deviceUuid);
+        if (existing) clearTimeout(existing);
+
+        const timer = setTimeout(() => {
+          debounceTimers.delete(deviceUuid);
+          queryClient.invalidateQueries({
+            queryKey: [...SENSOR_READING_LATEST_ALL_QUERY_KEY, deviceUuid],
+          });
+          queryClient.invalidateQueries({ queryKey: ["devices", "location", uuid] });
+        }, DEBOUNCE_MS);
+
+        debounceTimers.set(deviceUuid, timer);
+      }
+    );
+
+    return () => {
+      debounceTimers.forEach((t) => clearTimeout(t));
+      debounceTimers.clear();
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [token, queryClient, uuid]);
 
   const handleDelete = async () => {
     if (!token || !uuid) return;
@@ -573,7 +622,11 @@ const LocationDetail = () => {
                           left: `${position_x}%`,
                           top: `${position_y}%`,
                         }}
-                        title={device.name}
+                        title={
+                          device.operation_status !== "online"
+                            ? `${device.name} — Offline`
+                            : device.name
+                        }
                         onDoubleClick={(e) => {
                           e.stopPropagation();
                           setOpenBarDeviceUuid((prev) => {
@@ -644,7 +697,11 @@ const LocationDetail = () => {
                           </div>
                         )}
                         <div
-                          className="w-10 h-10 flex items-center justify-center rounded-lg select-none"
+                          className={`w-10 h-10 flex items-center justify-center rounded-lg select-none ${
+                            !isPending && device.operation_status !== "online"
+                              ? "ring-2 ring-destructive animate-pulse"
+                              : ""
+                          }`}
                           style={{
                             backgroundColor: device.icon?.color
                               ? `${device.icon.color}${isPending ? "40" : "20"}`
@@ -674,6 +731,10 @@ const LocationDetail = () => {
                             <Cpu className="w-6 h-6 text-muted-foreground" />
                           )}
                         </div>
+                        <DeviceIconStatusBar
+                          deviceUuid={device.uuid}
+                          deviceType={device.device_type}
+                        />
                       </div>
                     );
                   })}

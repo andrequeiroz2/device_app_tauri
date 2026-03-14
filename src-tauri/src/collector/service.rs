@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tauri::AppHandle;
 use tracing::{error, info, instrument, warn};
 use tokio::time::sleep;
 use crossbeam_channel::RecvTimeoutError;
@@ -31,7 +32,10 @@ pub struct StartCollectorResult {
 ///
 /// Returns CollectorState and notification receiver for the Tauri app.
 #[instrument(skip_all)]
-pub async fn start_collector(pool: Pool<Sqlite>) -> Result<StartCollectorResult, Box<dyn std::error::Error>> {
+pub async fn start_collector(
+    pool: Pool<Sqlite>,
+    app: AppHandle,
+) -> Result<StartCollectorResult, Box<dyn std::error::Error>> {
     info!("Starting MQTT collector...");
 
     let (collector_state, command_rx) = CollectorState::new();
@@ -47,6 +51,7 @@ pub async fn start_collector(pool: Pool<Sqlite>) -> Result<StartCollectorResult,
         pool,
         Some(notification_sender),
         collector_state.clone(),
+        app,
     ));
 
     info!("Collector started in idle state. Awaiting UserLoggedIn commands.");
@@ -64,6 +69,7 @@ async fn collector_command_loop(
     pool: Pool<Sqlite>,
     notification_sender: Option<NotificationSender>,
     collector_state: CollectorState,
+    app: AppHandle,
 ) {
     let mut monitor_handle: Option<tauri::async_runtime::JoinHandle<()>> = None;
     let stop_requested = Arc::new(AtomicBool::new(false));
@@ -111,9 +117,10 @@ async fn collector_command_loop(
                 let sender_clone = notification_sender.clone();
                 let stop = Arc::clone(&stop_requested);
                 let state_clone = collector_state.clone();
+                let app_clone = app.clone();
 
                 let handle = tauri::async_runtime::spawn(async move {
-                    run_monitor_with_reconnect(broker, pool_clone, sender_clone, stop, state_clone)
+                    run_monitor_with_reconnect(broker, pool_clone, sender_clone, stop, state_clone, app_clone)
                         .await;
                 });
                 monitor_handle = Some(handle);
@@ -193,9 +200,10 @@ async fn collector_command_loop(
                 let sender_clone = notification_sender.clone();
                 let stop = Arc::clone(&stop_requested);
                 let state_clone = collector_state.clone();
+                let app_clone = app.clone();
 
                 let handle = tauri::async_runtime::spawn(async move {
-                    run_monitor_with_reconnect(broker, pool_clone, sender_clone, stop, state_clone)
+                    run_monitor_with_reconnect(broker, pool_clone, sender_clone, stop, state_clone, app_clone)
                         .await;
                 });
                 monitor_handle = Some(handle);
@@ -225,6 +233,7 @@ async fn run_monitor_with_reconnect(
     notification_sender: Option<NotificationSender>,
     stop_requested: Arc<AtomicBool>,
     _collector_state: CollectorState,
+    app: AppHandle,
 ) {
     let mut backoff_secs = 1u64;
     let mut is_reconnect = false;
@@ -233,7 +242,7 @@ async fn run_monitor_with_reconnect(
         if stop_requested.load(Ordering::SeqCst) {
             break;
         }
-        match try_connect_and_monitor(&broker, &pool, notification_sender.as_ref(), &stop_requested, is_reconnect).await {
+        match try_connect_and_monitor(&broker, &pool, notification_sender.as_ref(), &stop_requested, is_reconnect, &app).await {
             Ok(true) => {
                 // Stopped by command (UserLoggedOut or broker switch)
                 break;
@@ -283,6 +292,7 @@ async fn try_connect_and_monitor(
     notification_sender: Option<&NotificationSender>,
     stop_requested: &AtomicBool,
     is_reconnect: bool,
+    app: &AppHandle,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let mut client = MqttClient::new(broker.clone())?;
 
@@ -314,7 +324,7 @@ async fn try_connect_and_monitor(
 
         match result {
             Ok(Some(message)) => {
-                crate::collector::mqtt::handler::handle_mqtt_message(message, pool).await;
+                crate::collector::mqtt::handler::handle_mqtt_message(message, pool, app).await;
             }
             Ok(None) => {
                 warn!("Message stream closed");
