@@ -199,10 +199,18 @@ const IconsList = () => {
           <div className="p-4 space-y-2">
             {items.map((icon) =>
               icon.is_active ? (
-                <Link
+                <div
                   key={icon.uuid}
-                  to={`/icons/${icon.uuid}/edit`}
-                  className="block rounded-lg border border-border p-4 transition-colors hover:bg-muted/50"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/icons/${icon.uuid}/edit`)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(`/icons/${icon.uuid}/edit`);
+                    }
+                  }}
+                  className="block rounded-lg border border-border p-4 transition-colors hover:bg-muted/50 cursor-pointer"
                 >
                   <div className="flex items-center gap-4">
                     <div
@@ -237,10 +245,15 @@ const IconsList = () => {
                     </div>
                     <div
                       className="flex items-center gap-2 shrink-0"
-                      onClick={(e) => e.preventDefault()}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <Button asChild variant="outline" size="sm">
-                        <Link to={`/icons/${icon.uuid}/edit`} onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => e.stopPropagation()}
+                        asChild
+                      >
+                        <Link to={`/icons/${icon.uuid}/edit`}>
                           <Pencil className="w-4 h-4" />
                         </Link>
                       </Button>
@@ -248,7 +261,7 @@ const IconsList = () => {
                         variant="outline"
                         size="sm"
                         onClick={(e) => {
-                          e.preventDefault();
+                          e.stopPropagation();
                           setDeleteTarget(icon);
                         }}
                         className="text-destructive hover:text-destructive"
@@ -257,7 +270,7 @@ const IconsList = () => {
                       </Button>
                     </div>
                   </div>
-                </Link>
+                </div>
               ) : (
                 <div
                   key={icon.uuid}

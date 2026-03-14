@@ -11,7 +11,7 @@ import uasyncio as asyncio
 from machine import Timer, WDT
 
 from config.config           import write_init_config, read_config, AdoptedStatus
-from mqtt.mqtt_client        import connect as mqtt_connect, disconnect as mqtt_disconnect, poll as mqtt_poll, publish_data, publish_status
+from mqtt.mqtt_client        import connect as mqtt_connect, disconnect as mqtt_disconnect, is_connected as mqtt_is_connected, poll as mqtt_poll, publish_data, publish_status
 from protocol.commands       import is_adopted
 from protocol.serial_handler import init as serial_init, poll as serial_poll
 from sensors.dht             import init as dht_init, read as dht_read
@@ -126,19 +126,21 @@ async def _run_operation_mode():
                 mqtt_disconnect()
                 await mqtt_connect()
 
-            # Sensor read tick
+            # Sensor read tick — skip if MQTT not connected
             if _sensor_flag:
                 _sensor_flag = False
-                data = dht_read()
-                if data is not None:
-                    publish_data(data)
-                else:
-                    log_err(_MODULE, "_run_operation_mode", "sensor read returned None")
+                if mqtt_is_connected():
+                    data = dht_read()
+                    if data is not None:
+                        publish_data(data)
+                    else:
+                        log_err(_MODULE, "_run_operation_mode", "sensor read returned None")
 
-            # Heartbeat tick
+            # Heartbeat tick — skip if MQTT not connected
             if _heartbeat_flag:
                 _heartbeat_flag = False
-                publish_status("online")
+                if mqtt_is_connected():
+                    publish_status("online")
 
             gc.collect()
             wdt.feed()

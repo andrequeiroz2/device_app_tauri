@@ -36,6 +36,7 @@ import {
   Lock,
   LockOpen,
   Info,
+  BarChart2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { LocationActionsPanel } from "@/components/LocationActionsPanel";
@@ -624,6 +625,14 @@ const LocationDetail = () => {
                                 <Lock className="w-4 h-4 text-muted-foreground" />
                               </button>
                             )}
+                            <button
+                              type="button"
+                              className="p-1 rounded hover:bg-accent"
+                              aria-label="Device dashboard"
+                              onClick={() => navigate(`/devices/${device.uuid}/dashboard`)}
+                            >
+                              <BarChart2 className="w-4 h-4 text-muted-foreground" />
+                            </button>
                             <button
                               type="button"
                               className="p-1 rounded hover:bg-accent"

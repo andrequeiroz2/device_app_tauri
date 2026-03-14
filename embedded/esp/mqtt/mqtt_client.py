@@ -108,6 +108,11 @@ def _build_client_id():
 
 # --- Public API ---
 
+def is_connected():
+    """Return True if MQTT client is connected, False otherwise."""
+    return _client is not None
+
+
 async def connect():
     """
     Read broker params from config.json, connect to broker,

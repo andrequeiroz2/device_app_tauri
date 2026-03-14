@@ -62,7 +62,8 @@ export const DeviceIconSelector = ({
   }
 
   return (
-    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+    <div className="max-h-48 overflow-y-auto overflow-x-hidden rounded-lg border border-input p-2">
+      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
       {items.map((icon) => {
         const isSelected = value === icon.uuid;
         return (
@@ -96,6 +97,7 @@ export const DeviceIconSelector = ({
           </button>
         );
       })}
+      </div>
     </div>
   );
 };

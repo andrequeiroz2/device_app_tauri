@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Cpu, Wifi, Server, ArrowLeft, CircuitBoard, CheckCircle2, AlertCircle, Fingerprint, Layers, Thermometer, Eye, EyeOff, ImageIcon } from "lucide-react";
+import { Loader2, Cpu, Wifi, Server, ArrowLeft, CircuitBoard, CheckCircle2, AlertCircle, Fingerprint, Layers, Thermometer, Eye, EyeOff, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -225,7 +225,7 @@ const DeviceAdoptionWizard = () => {
       name: name.trim(),
       location_uuid: uuid,
       description: description.trim() || undefined,
-      icon_uuid: iconUuid || undefined,
+      icon_uuid: iconUuid!,
       broker_url: brokerInfo.broker_url,
       wifi_ssid: wifiSsid.trim(),
       wifi_password: wifiPassword,
@@ -262,14 +262,14 @@ const DeviceAdoptionWizard = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-secondary/20 text-foreground">
+    <div className="h-screen flex flex-col overflow-hidden bg-secondary/20 text-foreground">
       <motion.div
-        className="max-w-4xl mx-auto py-10 px-4 space-y-6"
+        className="max-w-4xl w-full mx-auto flex-1 flex flex-col min-h-0 py-10 px-4"
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
       >
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-4 mb-6">
         <Button
           variant="ghost"
           size="icon"
@@ -287,7 +287,7 @@ const DeviceAdoptionWizard = () => {
       </div>
 
       {/* Step indicator */}
-      <div className="flex items-center gap-0">
+      <div className="flex shrink-0 items-center gap-0 mb-6">
         {steps.map((s, i) => {
           const stepNum = i + 1;
           const isCompleted = step > stepNum;
@@ -326,7 +326,8 @@ const DeviceAdoptionWizard = () => {
         })}
       </div>
 
-      <div className="bg-background border border-border rounded-xl p-6 shadow-sm space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="bg-background border border-border rounded-xl p-6 shadow-sm space-y-6">
         {/* Serial port */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -336,34 +337,40 @@ const DeviceAdoptionWizard = () => {
           <div className="flex flex-wrap gap-4 items-end">
             <div className="space-y-2 min-w-[200px]">
               <label className="text-sm font-medium">Port</label>
-              <select
-                value={port}
-                onChange={(e) => setPort(e.target.value)}
-                className="h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={portsLoading}
-              >
-                <option value="">Select a port</option>
-                {ports.map((p) => (
-                  <option key={p.port_name} value={p.port_name}>
-                    {p.port_name}
-                    {p.manufacturer || p.product ? ` (${p.manufacturer ?? p.product ?? ""})` : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                  className="h-10 w-full appearance-none rounded-lg border border-input bg-card pr-9 pl-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={portsLoading}
+                >
+                  <option value="">Select a port</option>
+                  {ports.map((p) => (
+                    <option key={p.port_name} value={p.port_name}>
+                      {p.port_name}
+                      {p.manufacturer || p.product ? ` (${p.manufacturer ?? p.product ?? ""})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              </div>
             </div>
             <div className="space-y-2 min-w-[140px]">
               <label className="text-sm font-medium">Baud rate</label>
-              <select
-                value={baudRate}
-                onChange={(e) => setBaudRate(Number(e.target.value))}
-                className="h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                {BAUDRATES.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={baudRate}
+                  onChange={(e) => setBaudRate(Number(e.target.value))}
+                  className="h-10 w-full appearance-none rounded-lg border border-input bg-card pr-9 pl-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {BAUDRATES.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              </div>
             </div>
             <Button
               variant="outline"
@@ -594,7 +601,7 @@ const DeviceAdoptionWizard = () => {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Living Room Sensor"
-                    className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="mt-1 h-10 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
                 <div>
@@ -604,19 +611,13 @@ const DeviceAdoptionWizard = () => {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Optional"
-                    className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="mt-1 h-10 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <ImageIcon className="w-4 h-4" />
-                    Icon
-                    <span className="text-muted-foreground font-normal">(optional)</span>
-                  </label>
-                  <p className="text-xs text-muted-foreground mt-0.5 mb-2">
-                    Showing only {probeResult.device_info.device_type} icons
-                  </p>
-                  <DeviceIconSelector
+                  <label className="text-sm font-medium">Icon *</label>
+                  <div className="mt-2">
+                    <DeviceIconSelector
                     deviceType={
                       probeResult.device_info.device_type?.toLowerCase() === "actuator"
                         ? "actuator"
@@ -625,6 +626,7 @@ const DeviceAdoptionWizard = () => {
                     value={iconUuid}
                     onChange={setIconUuid}
                   />
+                  </div>
                 </div>
               </div>
             </div>
@@ -643,7 +645,7 @@ const DeviceAdoptionWizard = () => {
                     value={wifiSsid}
                     onChange={(e) => setWifiSsid(e.target.value)}
                     placeholder="Network name"
-                    className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="mt-1 h-10 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
                 <div>
@@ -654,7 +656,7 @@ const DeviceAdoptionWizard = () => {
                       value={wifiPassword}
                       onChange={(e) => setWifiPassword(e.target.value)}
                       placeholder="Password"
-                      className="h-10 w-full rounded-lg border border-input bg-background px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="h-10 w-full rounded-lg border border-input bg-transparent px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                     <button
                       type="button"
@@ -696,7 +698,7 @@ const DeviceAdoptionWizard = () => {
 
             <Button
                 onClick={handleAdopt}
-                disabled={adopting || !brokerInfo || !wifiSsid.trim()}
+                disabled={adopting || !brokerInfo || !wifiSsid.trim() || !iconUuid}
                 className="w-full"
               >
                 {adopting ? (
@@ -711,8 +713,9 @@ const DeviceAdoptionWizard = () => {
             </>
             )}
             </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
       </motion.div>
 
