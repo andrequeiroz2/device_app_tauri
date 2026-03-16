@@ -245,6 +245,8 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
             sensor_type TEXT,                       -- For sensors: "DHT11", "BME280", "DS18B20", etc
             actuator_type TEXT,                     -- For actuators: "relay", "motor", "led", etc
             device_scale TEXT,
+            parameter_ranges TEXT,                  -- Sensor: JSON { "measurement": { "unit", "min_reading", "max_reading" } } (ROLE.md)
+            command_spec TEXT,                      -- Actuator: JSON { "type": "discrete"|"range", ... } (ROLE.md)
             adopted_at TEXT DEFAULT CURRENT_TIMESTAMP,
             operation_status TEXT DEFAULT 'offline' CHECK(operation_status IN ('online', 'offline')),
             last_seen_at TEXT,
@@ -323,6 +325,35 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
         
         CREATE INDEX IF NOT EXISTS idx_readings_time 
             ON sensor_readings(recorded_at);
+
+        CREATE TABLE IF NOT EXISTS triggers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT NOT NULL UNIQUE,
+            user_id INTEGER NOT NULL,
+            device_id INTEGER,
+            name TEXT NOT NULL,
+            source_event TEXT NOT NULL CHECK(source_event IN ('sensor_reading', 'device_command', 'schedule')),
+            condition_json TEXT NOT NULL,
+            action_type TEXT NOT NULL CHECK(action_type IN ('discord', 'telegram', 'device_command')),
+            action_config_json TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
+        CREATE TRIGGER IF NOT EXISTS trg_triggers_updated_at
+        AFTER UPDATE ON triggers
+        FOR EACH ROW
+        BEGIN
+            UPDATE triggers SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+        END;
+
+        CREATE INDEX IF NOT EXISTS idx_triggers_user_id ON triggers(user_id);
+        CREATE INDEX IF NOT EXISTS idx_triggers_device_id ON triggers(device_id);
+        CREATE INDEX IF NOT EXISTS idx_triggers_uuid ON triggers(uuid);
+        CREATE INDEX IF NOT EXISTS idx_triggers_user_active ON triggers(user_id, is_active);
         "#,
     )
         .execute(pool)
@@ -336,6 +367,10 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
     // Migration: add position_x, position_y for device placement on location image (Task_Device_Position_In_Location)
     let _ = sqlx::query("ALTER TABLE devices ADD COLUMN position_x REAL").execute(pool).await;
     let _ = sqlx::query("ALTER TABLE devices ADD COLUMN position_y REAL").execute(pool).await;
+
+    // Migration: parameter_ranges (sensor) and command_spec (actuator) — Task_Device_Types_Sensor_Actuator_Ranges
+    let _ = sqlx::query("ALTER TABLE devices ADD COLUMN parameter_ranges TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE devices ADD COLUMN command_spec TEXT").execute(pool).await;
 
     Ok(())
 }

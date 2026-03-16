@@ -812,6 +812,33 @@ const LocationDetail = () => {
                       </p>
                     </div>
                   )}
+                  {deviceInfoPopupDevice.device_type === "sensor" &&
+                    deviceInfoPopupDevice.parameter_ranges &&
+                    Object.keys(deviceInfoPopupDevice.parameter_ranges).length > 0 && (
+                    <div>
+                      <p className="font-semibold text-foreground mb-0.5">Reading ranges</p>
+                      <ul className="text-sm text-muted-foreground list-none space-y-1">
+                        {Object.entries(deviceInfoPopupDevice.parameter_ranges).map(
+                          ([measurement, range]) => (
+                            <li key={measurement} className="font-mono">
+                              {measurement}: {range.min_reading}–{range.max_reading} {range.unit}
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  {deviceInfoPopupDevice.device_type === "actuator" &&
+                    deviceInfoPopupDevice.command_spec && (
+                    <div>
+                      <p className="font-semibold text-foreground mb-0.5">Command spec</p>
+                      <p className="text-sm text-muted-foreground">
+                        {deviceInfoPopupDevice.command_spec.type === "discrete"
+                          ? `Commands: ${deviceInfoPopupDevice.command_spec.commands.join(", ")}`
+                          : `Range: ${deviceInfoPopupDevice.command_spec.min}–${deviceInfoPopupDevice.command_spec.max} ${deviceInfoPopupDevice.command_spec.unit}`}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </AlertDialogDescription>

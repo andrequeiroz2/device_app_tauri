@@ -31,6 +31,9 @@ use api::device::device_handler::{
     get_device_by_mac_handler, list_devices_handler, delete_device_handler, get_device_handler,
     update_device_handler, DeviceDeleteInput, get_device_commands_for_chart_handler,
 };
+use api::device::device_query::{
+    device_command_insert_query, device_get_by_uuid_query, device_update_last_command_query,
+};
 use api::device::device_model::{
     DeviceCommandChartPoint, DeviceCommandsChartFilter, DeviceCreateInput, DeviceListParams,
     DevicePublic, DeviceUpdateInput,
@@ -48,6 +51,17 @@ use api::sensor_reading::{
     delete_sensor_reading_old_handler,
     SensorReadingCreateInput, SensorReadingBatchInput, SensorReadingFilter,
     SensorReadingAggregatedFilter, SensorReadingPublic, SensorReadingLatest, SensorReadingAggregated,
+};
+use api::trigger::trigger_handler::{
+    create_trigger_handler, list_triggers_handler, get_trigger_handler,
+    update_trigger_handler, delete_trigger_handler, trigger_send_test_handler,
+};
+use api::trigger::trigger_executor::{execute_device_command, device_command_payload_from_config};
+use api::trigger::trigger_service::run_device_command_triggers;
+use api::trigger::trigger_validator::validate_action_device_command_against_spec;
+use api::trigger::trigger_model::{
+    TriggerCreateInput, TriggerUpdateInput, TriggerDeleteInput, TriggerListParams,
+    TriggerPublic, TriggerListResponse,
 };
 use api::auth::auth_validator::validate_bearer;
 use api::user::user_query::user_get_by_uuid_query;
@@ -1588,6 +1602,86 @@ async fn delete_sensor_reading_old(
 // ============================================================================
 
 #[tauri::command]
+async fn send_device_command(
+    token: String,
+    device_uuid: String,
+    payload_json: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+    collector_state: tauri::State<'_, CollectorState>,
+) -> Result<ApiResponse<()>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "send_device_command",
+        request_id = %request_id,
+        device_uuid = %device_uuid,
+    );
+    let _guard = span.enter();
+
+    let auth = validate_bearer(&token)?;
+    let user = user_get_by_uuid_query(&auth.user_uuid, pool.inner())
+        .await
+        .map_err(ApiError::err)?;
+
+    let device = device_get_by_uuid_query(user.id, &device_uuid, pool.inner())
+        .await
+        .map_err(ApiError::err)?;
+
+    if device.device_type != "actuator" {
+        return Err(ApiError::err("Device is not an actuator".to_string()));
+    }
+
+    let action_config: serde_json::Value = serde_json::from_str(&payload_json)
+        .map_err(|e| ApiError::err(format!("Invalid payload JSON: {}", e)))?;
+    validate_action_device_command_against_spec(
+        device.command_spec.as_deref(),
+        &action_config,
+    )
+        .map_err(ApiError::err)?;
+
+    let config_map = action_config
+        .as_object()
+        .ok_or_else(|| ApiError::err("Payload must be a JSON object".to_string()))?;
+    let mqtt_payload = device_command_payload_from_config(config_map).map_err(ApiError::err)?;
+
+    execute_device_command(
+        collector_state.inner(),
+        pool.inner(),
+        user.id,
+        &device_uuid,
+        &mqtt_payload,
+    )
+    .await
+    .map_err(ApiError::err)?;
+
+    if let Err(e) = device_command_insert_query(
+        device.id,
+        &mqtt_payload,
+        "manual",
+        pool.inner(),
+    )
+    .await
+    {
+        error!(request_id = %request_id, error = %e, "send_device_command: device_command_insert failed");
+    }
+    let _ = device_update_last_command_query(device.id, &mqtt_payload, pool.inner()).await;
+
+    let command_payload_value: serde_json::Value =
+        serde_json::from_str(&mqtt_payload).unwrap_or(serde_json::Value::Null);
+    run_device_command_triggers(
+        device.id,
+        &device.name,
+        user.id,
+        &command_payload_value,
+        pool.inner(),
+        collector_state.inner(),
+    )
+    .await;
+
+    info!(request_id = %request_id, "send_device_command: success");
+    Ok(ApiResponse::ok(()))
+}
+
+#[tauri::command]
 async fn get_device_commands_for_chart(
     token: String,
     filter: DeviceCommandsChartFilter,
@@ -1613,6 +1707,154 @@ async fn get_device_commands_for_chart(
     }
 }
 
+// =====================
+// TRIGGER COMMANDS
+// =====================
+
+#[tauri::command]
+async fn create_trigger(
+    token: String,
+    payload: TriggerCreateInput,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<TriggerPublic>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!(
+        "create_trigger",
+        request_id = %request_id,
+        name = %payload.name,
+    );
+    let _guard = span.enter();
+
+    match create_trigger_handler(&token, &payload, &pool).await {
+        Ok(resp) => {
+            if let Some(ref t) = resp.data {
+                info!(request_id = %request_id, uuid = %t.uuid, "create_trigger: success");
+            } else {
+                info!(request_id = %request_id, "create_trigger: success (no data)");
+            }
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(request_id = %request_id, error = %err.message, "create_trigger: error");
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn trigger_send_test(
+    token: String,
+    trigger_uuid: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<()>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("trigger_send_test", request_id = %request_id, trigger_uuid = %trigger_uuid);
+    let _guard = span.enter();
+    match trigger_send_test_handler(&token, &trigger_uuid, pool.inner()).await {
+        Ok(resp) => {
+            info!(request_id = %request_id, "trigger_send_test: success");
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(request_id = %request_id, error = %err.message, "trigger_send_test: error");
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn list_triggers(
+    token: String,
+    params: TriggerListParams,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<TriggerListResponse>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("list_triggers", request_id = %request_id);
+    let _guard = span.enter();
+
+    match list_triggers_handler(&token, &params, &pool).await {
+        Ok(resp) => {
+            info!(
+                request_id = %request_id,
+                count = resp.data.as_ref().map(|d| d.items.len()).unwrap_or(0),
+                total = resp.data.as_ref().map(|d| d.total).unwrap_or(0),
+                "list_triggers: success"
+            );
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(request_id = %request_id, error = %err.message, "list_triggers: error");
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn get_trigger(
+    token: String,
+    trigger_uuid: String,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<TriggerPublic>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("get_trigger", request_id = %request_id, trigger_uuid = %trigger_uuid);
+    let _guard = span.enter();
+
+    match get_trigger_handler(&token, &trigger_uuid, &pool).await {
+        Ok(resp) => {
+            info!(request_id = %request_id, "get_trigger: success");
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(request_id = %request_id, error = %err.message, "get_trigger: error");
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn update_trigger(
+    token: String,
+    payload: TriggerUpdateInput,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<TriggerPublic>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("update_trigger", request_id = %request_id, uuid = %payload.uuid);
+    let _guard = span.enter();
+
+    match update_trigger_handler(&token, &payload, &pool).await {
+        Ok(resp) => {
+            info!(request_id = %request_id, "update_trigger: success");
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(request_id = %request_id, error = %err.message, "update_trigger: error");
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+async fn delete_trigger(
+    token: String,
+    payload: TriggerDeleteInput,
+    pool: tauri::State<'_, Pool<Sqlite>>,
+) -> Result<ApiResponse<()>, ApiError> {
+    let request_id = Uuid::new_v4();
+    let span = info_span!("delete_trigger", request_id = %request_id, uuid = %payload.uuid);
+    let _guard = span.enter();
+
+    match delete_trigger_handler(&token, &payload, &pool).await {
+        Ok(resp) => {
+            info!(request_id = %request_id, "delete_trigger: success");
+            Ok(resp)
+        }
+        Err(err) => {
+            error!(request_id = %request_id, error = %err.message, "delete_trigger: error");
+            Err(err)
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_tracing();
@@ -1633,7 +1875,8 @@ pub fn run() {
             create_sensor_reading, create_sensor_reading_batch, list_sensor_readings,
             get_sensor_reading_latest, get_sensor_reading_latest_all, get_sensor_reading_aggregated,
             get_sensor_reading_count, delete_sensor_reading_old,
-            get_device_commands_for_chart,
+            get_device_commands_for_chart, send_device_command,
+            create_trigger, list_triggers, get_trigger, update_trigger, delete_trigger, trigger_send_test,
             list_collector_notifications, get_collector_notification, mark_collector_notification_read, mark_all_collector_notifications_read, count_collector_notifications
         ])
         .on_window_event(|app, event| {

@@ -1,13 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ApiResponse } from "@/types/api";
 import type {
-  DevicePublic,
-  DeviceCommandChartPoint,
-  DeviceCommandsChartFilter,
-  DeviceListParams,
-  DeviceListResponse,
-  DeviceUpdateInput,
-} from "@/types/device";
+  TriggerPublic,
+  TriggerListParams,
+  TriggerListResponse,
+  TriggerCreateInput,
+  TriggerUpdateInput,
+} from "@/types/trigger";
 
 const normalizeMessage = (msg: unknown): string => {
   if (typeof msg === "string") return msg;
@@ -23,34 +22,20 @@ const normalizeMessage = (msg: unknown): string => {
   return String(msg ?? "Unknown error");
 };
 
-export type GetDeviceResult = {
+type Result<T = void> = {
   success: boolean;
   message?: string;
-  data?: DevicePublic;
+  data?: T;
   unauthorized?: boolean;
 };
 
-export type GetDeviceCommandsForChartResult = {
-  success: boolean;
-  message?: string;
-  data?: DeviceCommandChartPoint[];
-  unauthorized?: boolean;
-};
-
-export type ListDevicesResult = {
-  success: boolean;
-  message?: string;
-  data?: DeviceListResponse;
-  unauthorized?: boolean;
-};
-
-export const deviceApi = {
-  async listDevices(
+export const triggerApi = {
+  async listTriggers(
     token: string,
-    params: DeviceListParams
-  ): Promise<ListDevicesResult> {
+    params: TriggerListParams
+  ): Promise<Result<TriggerListResponse>> {
     try {
-      const resp = await invoke<ApiResponse<DeviceListResponse>>("list_devices", {
+      const resp = await invoke<ApiResponse<TriggerListResponse>>("list_triggers", {
         token,
         params: {
           page: params.page ?? 1,
@@ -58,7 +43,6 @@ export const deviceApi = {
           filter: params.filter ?? {},
         },
       });
-
       if (!resp.success) {
         const message = normalizeMessage(resp.message);
         return {
@@ -67,12 +51,7 @@ export const deviceApi = {
           unauthorized: message.toLowerCase().includes("unauthorized"),
         };
       }
-
-      return {
-        success: true,
-        data: resp.data,
-        message: resp.message,
-      };
+      return { success: true, data: resp.data, message: resp.message };
     } catch (err) {
       const message = normalizeMessage(err);
       return {
@@ -83,16 +62,15 @@ export const deviceApi = {
     }
   },
 
-  async getDeviceByMac(
+  async getTrigger(
     token: string,
-    macAddress: string
-  ): Promise<GetDeviceResult> {
+    triggerUuid: string
+  ): Promise<Result<TriggerPublic>> {
     try {
-      const resp = await invoke<ApiResponse<DevicePublic | null>>("get_device_by_mac", {
+      const resp = await invoke<ApiResponse<TriggerPublic>>("get_trigger", {
         token,
-        macAddress,
+        triggerUuid,
       });
-
       if (!resp.success) {
         const message = normalizeMessage(resp.message);
         return {
@@ -101,12 +79,7 @@ export const deviceApi = {
           unauthorized: message.toLowerCase().includes("unauthorized"),
         };
       }
-
-      return {
-        success: true,
-        data: resp.data ?? undefined,
-        message: resp.message,
-      };
+      return { success: true, data: resp.data, message: resp.message };
     } catch (err) {
       const message = normalizeMessage(err);
       return {
@@ -117,13 +90,19 @@ export const deviceApi = {
     }
   },
 
-  async getDevice(token: string, uuid: string): Promise<GetDeviceResult> {
+  async createTrigger(
+    token: string,
+    payload: TriggerCreateInput
+  ): Promise<Result<TriggerPublic>> {
     try {
-      const resp = await invoke<ApiResponse<DevicePublic>>("get_device", {
+      const resp = await invoke<ApiResponse<TriggerPublic>>("create_trigger", {
         token,
-        deviceUuid: uuid,
+        payload: {
+          ...payload,
+          condition_json: payload.condition_json as unknown as object,
+          action_config_json: payload.action_config_json as unknown as object,
+        },
       });
-
       if (!resp.success) {
         const message = normalizeMessage(resp.message);
         return {
@@ -132,12 +111,7 @@ export const deviceApi = {
           unauthorized: message.toLowerCase().includes("unauthorized"),
         };
       }
-
-      return {
-        success: true,
-        data: resp.data,
-        message: resp.message,
-      };
+      return { success: true, data: resp.data, message: resp.message };
     } catch (err) {
       const message = normalizeMessage(err);
       return {
@@ -148,16 +122,19 @@ export const deviceApi = {
     }
   },
 
-  async updateDevice(
+  async updateTrigger(
     token: string,
-    payload: DeviceUpdateInput
-  ): Promise<GetDeviceResult> {
+    payload: TriggerUpdateInput
+  ): Promise<Result<TriggerPublic>> {
     try {
-      const resp = await invoke<ApiResponse<DevicePublic>>("update_device", {
+      const resp = await invoke<ApiResponse<TriggerPublic>>("update_trigger", {
         token,
-        payload,
+        payload: {
+          ...payload,
+          condition_json: payload.condition_json as unknown as object | undefined,
+          action_config_json: payload.action_config_json as unknown as object | undefined,
+        },
       });
-
       if (!resp.success) {
         const message = normalizeMessage(resp.message);
         return {
@@ -166,12 +143,7 @@ export const deviceApi = {
           unauthorized: message.toLowerCase().includes("unauthorized"),
         };
       }
-
-      return {
-        success: true,
-        data: resp.data,
-        message: resp.message,
-      };
+      return { success: true, data: resp.data, message: resp.message };
     } catch (err) {
       const message = normalizeMessage(err);
       return {
@@ -182,54 +154,43 @@ export const deviceApi = {
     }
   },
 
-  async getDeviceCommandsForChart(
+  async deleteTrigger(
     token: string,
-    filter: DeviceCommandsChartFilter
-  ): Promise<GetDeviceCommandsForChartResult> {
+    uuid: string
+  ): Promise<Result<void>> {
     try {
-      const resp = await invoke<ApiResponse<DeviceCommandChartPoint[]>>(
-        "get_device_commands_for_chart",
-        { token, filter }
-      );
-
-      if (!resp.success) {
-        const message = normalizeMessage(resp.message);
-        return {
-          success: false,
-          message,
-          unauthorized: message.toLowerCase().includes("unauthorized"),
-        };
-      }
-
-      return {
-        success: true,
-        data: resp.data,
-        message: resp.message,
-      };
-    } catch (err) {
-      const message = normalizeMessage(err);
-      return {
-        success: false,
-        message,
-        unauthorized: message.toLowerCase().includes("unauthorized"),
-      };
-    }
-  },
-
-  /**
-   * Sends a command to an actuator device (publishes to MQTT).
-   * payloadJson must be action_config format: { command: string } for discrete or { command_payload: { value?, angle?, position?, ... } } for range.
-   */
-  async sendDeviceCommand(
-    token: string,
-    deviceUuid: string,
-    payloadJson: string
-  ): Promise<{ success: boolean; message?: string; unauthorized?: boolean }> {
-    try {
-      const resp = await invoke<ApiResponse<null>>("send_device_command", {
+      const resp = await invoke<ApiResponse<null>>("delete_trigger", {
         token,
-        deviceUuid,
-        payloadJson,
+        payload: { uuid },
+      });
+      if (!resp.success) {
+        const message = normalizeMessage(resp.message);
+        return {
+          success: false,
+          message,
+          unauthorized: message.toLowerCase().includes("unauthorized"),
+        };
+      }
+      return { success: true };
+    } catch (err) {
+      const message = normalizeMessage(err);
+      return {
+        success: false,
+        message,
+        unauthorized: message.toLowerCase().includes("unauthorized"),
+      };
+    }
+  },
+
+  /** Sends a test notification (Discord/Telegram only). */
+  async sendTest(
+    token: string,
+    triggerUuid: string
+  ): Promise<Result<void>> {
+    try {
+      const resp = await invoke<ApiResponse<null>>("trigger_send_test", {
+        token,
+        triggerUuid,
       });
       if (!resp.success) {
         const message = normalizeMessage(resp.message);

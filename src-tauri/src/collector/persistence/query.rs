@@ -167,6 +167,25 @@ pub async fn get_device_id_and_scale_by_uuid_query(
     row.ok_or_else(|| "Device not found".to_string())
 }
 
+/// Gets device name by id (for trigger notifications in collector context).
+#[instrument(skip(pool), fields(device_id = device_id))]
+pub async fn get_device_name_by_id_query(
+    pool: &Pool<Sqlite>,
+    device_id: i64,
+) -> Result<Option<String>, String> {
+    let row: Option<(String,)> = sqlx::query_as(
+        r#"SELECT name FROM devices WHERE id = ?1 AND is_active = 1"#,
+    )
+    .bind(device_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, device_id = device_id, "Failed to get device name");
+        format!("Failed to get device name: {}", e)
+    })?;
+    Ok(row.map(|r| r.0))
+}
+
 /// Atualiza operation_status e last_seen_at do device por uuid.
 /// Retorna número de linhas afetadas (0 se device não existir).
 #[instrument(skip(pool), fields(device_uuid = %device_uuid))]

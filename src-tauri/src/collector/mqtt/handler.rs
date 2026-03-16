@@ -1,13 +1,16 @@
 use paho_mqtt::Message;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tracing::{info, error, warn};
 use crate::api::sensor_reading::sensor_reading_query::sensor_reading_batch_insert;
+use crate::api::trigger::trigger_service::{run_sensor_reading_triggers, ReadingTuple};
 use crate::collector::mqtt::data_processor::process_mqtt_data_message;
 use crate::collector::mqtt::status_processor::process_mqtt_status_message;
 use crate::collector::persistence::query::{
     save_mqtt_message_query, update_device_operation_status_by_uuid_query,
 };
+use crate::collector::state::CollectorState;
 use crate::collector::topic::parse_topic_uuid;
+use sqlx::{Pool, Sqlite};
 
 const EVENT_DEVICE_DASHBOARD_UPDATE: &str = "device-dashboard-update";
 
@@ -40,7 +43,7 @@ pub async fn handle_mqtt_message(
         return;
     }
 
-    // Process /data topics → populate sensor_readings (Fase 2)
+    // Process /data topics → populate sensor_readings and evaluate triggers
     if topic.ends_with("/data") {
         match process_mqtt_data_message(&topic, &payload, pool).await {
             Ok(processed) if !processed.readings.is_empty() => {
@@ -48,6 +51,25 @@ pub async fn handle_mqtt_message(
                     sensor_reading_batch_insert(processed.device_id, &processed.readings, pool).await
                 {
                     warn!(error = %e, topic = %topic, "Failed to insert sensor readings");
+                } else {
+                    let device_id = processed.device_id;
+                    let readings: Vec<ReadingTuple> = processed.readings.clone();
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let Some(pool_guard) = app.try_state::<Pool<Sqlite>>() else {
+                            return;
+                        };
+                        let Some(collector_guard) = app.try_state::<CollectorState>() else {
+                            return;
+                        };
+                        run_sensor_reading_triggers(
+                            device_id,
+                            &readings,
+                            pool_guard.inner(),
+                            collector_guard.inner(),
+                        )
+                        .await;
+                    });
                 }
             }
             Err(e) => {

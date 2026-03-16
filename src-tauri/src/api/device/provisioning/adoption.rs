@@ -69,6 +69,10 @@ pub struct DeviceInfoInput {
     #[serde(default)]
     pub device_scale: Option<serde_json::Value>,
     #[serde(default)]
+    pub parameter_ranges: Option<serde_json::Value>,
+    #[serde(default)]
+    pub command_spec: Option<serde_json::Value>,
+    #[serde(default)]
     pub firmware_version: Option<String>,
 }
 
@@ -329,6 +333,8 @@ pub async fn adopt_device(
         sensor_type: input.device_info.sensor_type,
         actuator_type: input.device_info.actuator_type,
         device_scale: input.device_info.device_scale,
+        parameter_ranges: input.device_info.parameter_ranges,
+        command_spec: input.device_info.command_spec,
         icon_id,
     };
 
@@ -492,6 +498,8 @@ mod tests {
                 sensor_type: None,
                 actuator_type: None,
                 device_scale: None,
+                parameter_ranges: None,
+                command_spec: None,
                 firmware_version: None,
             },
         };

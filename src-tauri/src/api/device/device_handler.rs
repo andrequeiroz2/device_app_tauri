@@ -40,6 +40,14 @@ fn device_to_public(
         .device_scale
         .as_ref()
         .and_then(|s| serde_json::from_str(s).ok());
+    let parameter_ranges = device
+        .parameter_ranges
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok());
+    let command_spec = device
+        .command_spec
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok());
 
     DevicePublic {
         uuid: device.uuid,
@@ -54,6 +62,8 @@ fn device_to_public(
         sensor_type: device.sensor_type,
         actuator_type: device.actuator_type,
         device_scale,
+        parameter_ranges,
+        command_spec,
         adopted_at: device.adopted_at,
         operation_status: parse_operation_status(device.operation_status.as_deref()),
         last_seen_at: device.last_seen_at,

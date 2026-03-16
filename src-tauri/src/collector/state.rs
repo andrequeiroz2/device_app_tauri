@@ -15,7 +15,12 @@ pub enum CollectorCommand {
     ConnectBroker { broker_uuid: String },
     /// Disconnect current broker, keep user logged in
     DisconnectBroker,
+    /// Publish message to MQTT (e.g. trigger executor sending command to device). Only works when connected.
+    PublishMessage { topic: String, payload: String },
 }
+
+/// Request to publish from monitor task (topic, payload).
+pub type PublishRequest = (String, String);
 
 /// Shared state for the collector service
 /// Manages the current user session and broker connection
@@ -26,6 +31,8 @@ pub struct CollectorState {
     pub current_broker: Arc<Mutex<Option<MqttBroker>>>,
     /// Channel sender for sending commands to the collector
     pub command_tx: mpsc::Sender<CollectorCommand>,
+    /// Channel sender for publish requests (used by monitor task). Set when monitor starts, cleared when it stops.
+    publish_tx: Arc<Mutex<Option<mpsc::Sender<PublishRequest>>>>,
 }
 
 impl CollectorState {
@@ -33,14 +40,36 @@ impl CollectorState {
     /// Returns the state and the receiver for processing commands
     pub fn new() -> (Self, mpsc::Receiver<CollectorCommand>) {
         let (tx, rx) = mpsc::channel(100);
-        
+
         let state = Self {
             current_user_id: Arc::new(Mutex::new(None)),
             current_broker: Arc::new(Mutex::new(None)),
             command_tx: tx,
+            publish_tx: Arc::new(Mutex::new(None)),
         };
-        
+
         (state, rx)
+    }
+
+    /// Set the publish channel sender (called when monitor starts/stops).
+    pub fn set_publish_tx(&self, tx: Option<mpsc::Sender<PublishRequest>>) {
+        let mut guard = self.publish_tx.lock().unwrap();
+        *guard = tx;
+    }
+
+    /// Send a publish request to the monitor. Fails if not connected or channel full.
+    pub async fn send_publish(&self, topic: String, payload: String) -> Result<(), String> {
+        let tx = {
+            let guard = self.publish_tx.lock().unwrap();
+            guard.clone()
+        };
+        match tx {
+            Some(sender) => sender.send((topic, payload)).await.map_err(|e| {
+                error!(error = %e, "send_publish: channel closed or full");
+                format!("MQTT not connected or publish channel full: {}", e)
+            }),
+            None => Err("MQTT not connected".to_string()),
+        }
     }
     
     /// Gets the current user ID
@@ -96,6 +125,7 @@ impl Clone for CollectorState {
             current_user_id: Arc::clone(&self.current_user_id),
             current_broker: Arc::clone(&self.current_broker),
             command_tx: self.command_tx.clone(),
+            publish_tx: Arc::clone(&self.publish_tx),
         }
     }
 }

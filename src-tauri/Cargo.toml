@@ -57,3 +57,6 @@ chrono = { version = "0.4", features = ["serde"] }
 # Serial communication (device provisioning)
 tokio-serial = "5.4"
 serialport = "4.3"
+
+[dev-dependencies]
+mockito = "1"

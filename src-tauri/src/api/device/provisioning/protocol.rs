@@ -40,6 +40,12 @@ pub struct DeviceInfo {
     pub mac_address: String,
     #[serde(default)]
     pub device_scale: Option<serde_json::Value>,
+    /// Sensor: { measurement: { unit, min_reading, max_reading } }
+    #[serde(default)]
+    pub parameter_ranges: Option<serde_json::Value>,
+    /// Actuator: { type: "discrete"|"range", ... }
+    #[serde(default)]
+    pub command_spec: Option<serde_json::Value>,
     #[serde(default)]
     pub firmware_version: Option<String>,
     /// Present when adopted_status=1; used to check if device belongs to logged user
@@ -244,6 +250,8 @@ mod tests {
             boarder_type: "ESP32".to_string(),
             mac_address: "3C:71:BF:4D:DB:0C".to_string(),
             device_scale: None,
+            parameter_ranges: None,
+            command_spec: None,
             firmware_version: None,
             user_uuid: None,
         };

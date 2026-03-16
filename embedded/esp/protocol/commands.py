@@ -33,6 +33,7 @@ def handle_ping(data):
 
 def handle_get_info(data):
     """Return device identity fields and firmware version.
+    Includes parameter_ranges (sensor) / command_spec (actuator)
     When adopted, also returns user_uuid for ownership check."""
     config = read_config()
     if config is None:
@@ -47,6 +48,8 @@ def handle_get_info(data):
         "boarder_type":     config.get("boarder_type"),
         "mac_address":      config.get("mac_address"),
         "device_scale":     config.get("device_scale"),
+        "parameter_ranges": config.get("parameter_ranges"),
+        "command_spec":     config.get("command_spec"),
         "firmware_version": FIRMWARE_VERSION,
     }
     if config.get("adopted_status") == 1:

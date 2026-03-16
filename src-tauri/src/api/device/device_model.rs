@@ -61,6 +61,8 @@ pub struct Device {
     pub sensor_type: Option<String>,
     pub actuator_type: Option<String>,
     pub device_scale: Option<String>,
+    pub parameter_ranges: Option<String>,
+    pub command_spec: Option<String>,
     pub adopted_at: Option<String>,
     pub operation_status: Option<String>,
     pub last_seen_at: Option<String>,
@@ -110,6 +112,8 @@ pub struct DevicePublic {
     pub sensor_type: Option<String>,
     pub actuator_type: Option<String>,
     pub device_scale: Option<serde_json::Value>,
+    pub parameter_ranges: Option<serde_json::Value>,
+    pub command_spec: Option<serde_json::Value>,
     pub adopted_at: Option<String>,
     pub operation_status: Option<OperationStatus>,
     pub last_seen_at: Option<String>,
@@ -149,6 +153,10 @@ pub struct DeviceCreateInput {
     pub sensor_type: Option<String>,
     pub actuator_type: Option<String>,
     pub device_scale: Option<serde_json::Value>,
+    #[serde(default)]
+    pub parameter_ranges: Option<serde_json::Value>,
+    #[serde(default)]
+    pub command_spec: Option<serde_json::Value>,
     #[serde(default)]
     pub icon_id: Option<i64>,
 }
@@ -271,6 +279,8 @@ pub struct DeviceCreateDB {
     pub sensor_type: Option<String>,
     pub actuator_type: Option<String>,
     pub device_scale: Option<String>,
+    pub parameter_ranges: Option<String>,
+    pub command_spec: Option<String>,
     pub icon_id: Option<i64>,
 }
 
@@ -395,6 +405,8 @@ impl DeviceCreateInput {
             sensor_type: self.sensor_type.as_ref().map(|s| s.trim().to_string()),
             actuator_type: self.actuator_type.as_ref().map(|a| a.trim().to_string()),
             device_scale: self.device_scale.as_ref().map(|s| s.to_string()),
+            parameter_ranges: self.parameter_ranges.as_ref().map(|v| v.to_string()),
+            command_spec: self.command_spec.as_ref().map(|v| v.to_string()),
             icon_id: self.icon_id,
         }
     }

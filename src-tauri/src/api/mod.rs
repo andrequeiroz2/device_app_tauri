@@ -10,3 +10,4 @@ pub mod mqtt_broker;
 pub mod device;
 pub mod email;
 pub mod sensor_reading;
+pub mod trigger;

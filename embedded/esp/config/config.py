@@ -21,6 +21,10 @@ DEVICE_TYPE         = "Sensor"
 SENSOR_TYPE         = "DHT11"
 ACTUATOR_TYPE       = ""
 DEVICE_SCALE        = [["temperature", "C"], ["humidity", "%"]]
+PARAMETER_RANGES    = {
+    "temperature": {"unit": "C", "min_reading": 0, "max_reading": 50},
+    "humidity":     {"unit": "%", "min_reading": 0, "max_reading": 100},
+}
 ADOPTED_STATUS      = 0
 ADOPTED_STATUS_DESC = "not_adopted"
 
@@ -53,6 +57,14 @@ def _is_config_complete(config):
         return False
     if not isinstance(config.get("device_scale"), list):
         return False
+    if config.get("device_type") == "Sensor":
+        pr = config.get("parameter_ranges")
+        if not isinstance(pr, dict) or not pr:
+            return False
+    elif config.get("device_type") == "Actuator":
+        cs = config.get("command_spec")
+        if not isinstance(cs, dict) or not cs:
+            return False
     return True
 
 
@@ -67,6 +79,7 @@ def _build_init_config(mac):
         "boarder_type":        BOARDER_TYPE,
         "mac_address":         mac,
         "device_scale":        DEVICE_SCALE,
+        "parameter_ranges":    PARAMETER_RANGES,
         "broker_url":          "",
         "topic":               "",
         "user_uuid":           "",

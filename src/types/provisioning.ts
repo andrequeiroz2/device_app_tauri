@@ -6,6 +6,12 @@ export type SerialPortInfo = {
   serial_number?: string | null;
 };
 
+/** Sensor: { [measurement]: { unit, min_reading, max_reading } }; Actuator: { type: "discrete"|"range", ... } */
+export type ParameterRanges = Record<string, { unit: string; min_reading: number; max_reading: number }>;
+export type CommandSpec =
+  | { type: "discrete"; commands: string[] }
+  | { type: "range"; min: number; max: number; unit: string };
+
 export type DeviceInfoInput = {
   device_type: string;
   model: string;
@@ -13,6 +19,8 @@ export type DeviceInfoInput = {
   sensor_type?: string | null;
   actuator_type?: string | null;
   device_scale?: unknown;
+  parameter_ranges?: ParameterRanges | null;
+  command_spec?: CommandSpec | null;
   firmware_version?: string | null;
 };
 

@@ -34,6 +34,8 @@ import CollectorNotificationDetail from "./pages/CollectorNotificationDetail";
 import DevicesList from "./pages/DevicesList";
 import DeviceDashboard from "./pages/DeviceDashboard";
 import DeviceAdoptionWizard from "./pages/DeviceAdoptionWizard";
+import TriggersList from "./pages/TriggersList";
+import TriggerForm from "./pages/TriggerForm";
 import IconsList from "./pages/IconsList";
 import IconCreate from "./pages/IconCreate";
 import IconEdit from "./pages/IconEdit";
@@ -126,6 +128,23 @@ const NavBar = () => {
                 <DropdownMenuItem asChild>
                   <Link to="/devices/list" className="w-full">
                     List
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="hover:text-foreground transition-colors">
+                Trigger
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem asChild>
+                  <Link to="/triggers/list" className="w-full">
+                    List
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/triggers/create" className="w-full">
+                    Create
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -318,6 +337,30 @@ const App = () => (
                   element={
                     <ProtectedRoute>
                       <DeviceAdoptionWizard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/triggers/list"
+                  element={
+                    <ProtectedRoute>
+                      <TriggersList />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/triggers/create"
+                  element={
+                    <ProtectedRoute>
+                      <TriggerForm />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/triggers/:uuid/edit"
+                  element={
+                    <ProtectedRoute>
+                      <TriggerForm />
                     </ProtectedRoute>
                   }
                 />

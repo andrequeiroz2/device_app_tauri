@@ -216,6 +216,8 @@ const DeviceAdoptionWizard = () => {
       sensor_type: probeResult.device_info.sensor_type ?? undefined,
       actuator_type: probeResult.device_info.actuator_type ?? undefined,
       device_scale: probeResult.device_info.device_scale ?? undefined,
+      parameter_ranges: probeResult.device_info.parameter_ranges ?? undefined,
+      command_spec: probeResult.device_info.command_spec ?? undefined,
       firmware_version: probeResult.device_info.firmware_version ?? undefined,
     };
 

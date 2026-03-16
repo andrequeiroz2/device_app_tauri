@@ -77,6 +77,19 @@ pub fn map_icon_db_error(err: &Error) -> String {
     INTERNAL_SERVER_ERROR.to_string()
 }
 
+pub fn map_trigger_db_error(err: &Error) -> String {
+    if let Error::Database(db_err) = err {
+        if db_err.code().as_deref() == Some("2067") {
+            error!(code = ?db_err.code(), message = %db_err, "trigger db error: unique constraint");
+            return "Trigger already exists".to_string();
+        }
+        error!(code = ?db_err.code(), message = %db_err, "trigger db error");
+    } else {
+        error!(error = %err, "trigger db error");
+    }
+    INTERNAL_SERVER_ERROR.to_string()
+}
+
 pub fn map_device_db_error(err: &Error) -> String {
     if let Error::Database(db_err) = err {
         if db_err.code().as_deref() == Some("2067") {

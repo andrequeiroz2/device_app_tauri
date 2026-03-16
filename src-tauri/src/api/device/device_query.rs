@@ -28,16 +28,16 @@ pub async fn device_post_query(
         INSERT INTO devices (
             uuid, user_id, location_id, name, description,
             device_type, model, mac_address, firmware_version,
-            sensor_type, actuator_type, device_scale,
+            sensor_type, actuator_type, device_scale, parameter_ranges, command_spec,
             icon_id, adopted_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, CURRENT_TIMESTAMP)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, CURRENT_TIMESTAMP)
         RETURNING
             id, uuid, user_id, location_id, name, description, device_type,
             model, firmware_version, mac_address, sensor_type, actuator_type, device_scale,
-            adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
-            status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
-            heartbeat_interval, offline_threshold, last_command, last_command_at,
+            parameter_ranges, command_spec, adopted_at, operation_status, last_seen_at, ip_address,
+            publish_qos, subscribe_qos, status_retain, data_retain, lwt_enabled, lwt_message,
+            lwt_qos, lwt_retain, heartbeat_interval, offline_threshold, last_command, last_command_at,
             is_active, icon_id, position_x, position_y, created_at, updated_at
         "#,
     )
@@ -53,6 +53,8 @@ pub async fn device_post_query(
     .bind(&device.sensor_type)
     .bind(&device.actuator_type)
     .bind(&device.device_scale)
+    .bind(&device.parameter_ranges)
+    .bind(&device.command_spec)
     .bind(device.icon_id)
     .fetch_one(pool)
     .await
@@ -140,9 +142,9 @@ pub async fn device_list_query(
         SELECT
             id, uuid, user_id, location_id, name, description, device_type,
             model, firmware_version, mac_address, sensor_type, actuator_type, device_scale,
-            adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
-            status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
-            heartbeat_interval, offline_threshold, last_command, last_command_at,
+            parameter_ranges, command_spec, adopted_at, operation_status, last_seen_at, ip_address,
+            publish_qos, subscribe_qos, status_retain, data_retain, lwt_enabled, lwt_message,
+            lwt_qos, lwt_retain, heartbeat_interval, offline_threshold, last_command, last_command_at,
             is_active, icon_id, position_x, position_y, created_at, updated_at
         FROM devices
         WHERE {}
@@ -241,9 +243,9 @@ pub async fn device_get_by_mac_query(
         SELECT
             id, uuid, user_id, location_id, name, description, device_type,
             model, firmware_version, mac_address, sensor_type, actuator_type, device_scale,
-            adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
-            status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
-            heartbeat_interval, offline_threshold, last_command, last_command_at,
+            parameter_ranges, command_spec, adopted_at, operation_status, last_seen_at, ip_address,
+            publish_qos, subscribe_qos, status_retain, data_retain, lwt_enabled, lwt_message,
+            lwt_qos, lwt_retain, heartbeat_interval, offline_threshold, last_command, last_command_at,
             is_active, icon_id, position_x, position_y, created_at, updated_at
         FROM devices
         WHERE REPLACE(REPLACE(UPPER(mac_address), ':', ''), '-', '') = ?1 AND user_id = ?2 AND is_active = 1
@@ -272,9 +274,9 @@ pub async fn device_get_by_mac_any_user_query(
         SELECT
             id, uuid, user_id, location_id, name, description, device_type,
             model, firmware_version, mac_address, sensor_type, actuator_type, device_scale,
-            adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
-            status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
-            heartbeat_interval, offline_threshold, last_command, last_command_at,
+            parameter_ranges, command_spec, adopted_at, operation_status, last_seen_at, ip_address,
+            publish_qos, subscribe_qos, status_retain, data_retain, lwt_enabled, lwt_message,
+            lwt_qos, lwt_retain, heartbeat_interval, offline_threshold, last_command, last_command_at,
             is_active, icon_id, position_x, position_y, created_at, updated_at
         FROM devices
         WHERE REPLACE(REPLACE(UPPER(mac_address), ':', ''), '-', '') = ?1 AND is_active = 1
@@ -302,9 +304,9 @@ pub async fn device_get_by_uuid_query(
         SELECT
             id, uuid, user_id, location_id, name, description, device_type,
             model, firmware_version, mac_address, sensor_type, actuator_type, device_scale,
-            adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
-            status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
-            heartbeat_interval, offline_threshold, last_command, last_command_at,
+            parameter_ranges, command_spec, adopted_at, operation_status, last_seen_at, ip_address,
+            publish_qos, subscribe_qos, status_retain, data_retain, lwt_enabled, lwt_message,
+            lwt_qos, lwt_retain, heartbeat_interval, offline_threshold, last_command, last_command_at,
             is_active, icon_id, position_x, position_y, created_at, updated_at
         FROM devices
         WHERE uuid = ?1 AND user_id = ?2
@@ -412,9 +414,9 @@ pub async fn device_update_query(
         RETURNING
             id, uuid, user_id, location_id, name, description, device_type,
             model, firmware_version, mac_address, sensor_type, actuator_type, device_scale,
-            adopted_at, operation_status, last_seen_at, ip_address, publish_qos, subscribe_qos,
-            status_retain, data_retain, lwt_enabled, lwt_message, lwt_qos, lwt_retain,
-            heartbeat_interval, offline_threshold, last_command, last_command_at,
+            parameter_ranges, command_spec, adopted_at, operation_status, last_seen_at, ip_address,
+            publish_qos, subscribe_qos, status_retain, data_retain, lwt_enabled, lwt_message,
+            lwt_qos, lwt_retain, heartbeat_interval, offline_threshold, last_command, last_command_at,
             is_active, icon_id, position_x, position_y, created_at, updated_at
         "#,
         set_clause, uuid_bind, user_id_bind

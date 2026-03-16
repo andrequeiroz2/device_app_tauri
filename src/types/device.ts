@@ -16,6 +16,10 @@ export type DevicePublic = {
   sensor_type?: string | null;
   actuator_type?: string | null;
   device_scale?: [string, string][] | null;
+  /** Sensor: { [measurement]: { unit, min_reading, max_reading } } */
+  parameter_ranges?: Record<string, { unit: string; min_reading: number; max_reading: number }> | null;
+  /** Actuator: { type: "discrete", commands: string[] } | { type: "range", min, max, unit } */
+  command_spec?: { type: "discrete"; commands: string[] } | { type: "range"; min: number; max: number; unit: string } | null;
   adopted_at?: string | null;
   operation_status?: OperationStatus | null;
   last_seen_at?: string | null;

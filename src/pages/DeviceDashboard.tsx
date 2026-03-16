@@ -54,8 +54,22 @@ function SensorDashboard({
     );
   }
 
+  const parameterRanges = device.parameter_ranges && Object.keys(device.parameter_ranges).length > 0;
+
   return (
     <div className="space-y-6">
+      {parameterRanges && (
+        <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+          <p className="font-medium text-foreground mb-1">Reading ranges</p>
+          <ul className="text-muted-foreground list-none space-y-0.5">
+            {Object.entries(device.parameter_ranges!).map(([measurement, range]) => (
+              <li key={measurement} className="font-mono">
+                {measurement}: {range.min_reading}–{range.max_reading} {range.unit}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {deviceScale.map(([measurement, scale]) => (
           <CurrentValueCard
@@ -96,8 +110,130 @@ function ActuatorDashboard({
   device: DevicePublic;
   period: PeriodFilter;
 }) {
+  const { token, logout } = useAuth();
+  const queryClient = useQueryClient();
+  const commandSpec = device.command_spec;
+  const rangeMin = commandSpec?.type === "range" ? commandSpec.min : 0;
+  const rangeMax = commandSpec?.type === "range" ? commandSpec.max : 100;
+  const rangeUnit = commandSpec?.type === "range" ? commandSpec.unit : "";
+  const [rangeValue, setRangeValue] = useState<number>(rangeMin);
+  const [sending, setSending] = useState(false);
+
+  const handleSendDiscrete = async (command: string) => {
+    if (!token) return;
+    setSending(true);
+    try {
+      const result = await deviceApi.sendDeviceCommand(
+        token,
+        device.uuid,
+        JSON.stringify({ command })
+      );
+      if (result.unauthorized) {
+        logout();
+        return;
+      }
+      if (result.success) {
+        toast.success(`Command "${command}" sent`);
+        queryClient.invalidateQueries({
+          queryKey: [...DEVICE_COMMANDS_CHART_QUERY_KEY, device.uuid],
+        });
+        queryClient.invalidateQueries({ queryKey: ["device", device.uuid] });
+      } else {
+        toast.error(result.message ?? "Failed to send command");
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleSendRange = async () => {
+    if (!token || commandSpec?.type !== "range") return;
+    setSending(true);
+    try {
+      const result = await deviceApi.sendDeviceCommand(
+        token,
+        device.uuid,
+        JSON.stringify({ command_payload: { value: rangeValue } })
+      );
+      if (result.unauthorized) {
+        logout();
+        return;
+      }
+      if (result.success) {
+        toast.success(`Value ${rangeValue} ${rangeUnit} sent`);
+        queryClient.invalidateQueries({
+          queryKey: [...DEVICE_COMMANDS_CHART_QUERY_KEY, device.uuid],
+        });
+        queryClient.invalidateQueries({ queryKey: ["device", device.uuid] });
+      } else {
+        toast.error(result.message ?? "Failed to send command");
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {commandSpec && (
+        <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+          <p className="font-medium text-foreground mb-1">Command spec</p>
+          <p className="text-muted-foreground">
+            {commandSpec.type === "discrete"
+              ? `Commands: ${commandSpec.commands.join(", ")}`
+              : `Range: ${commandSpec.min}–${commandSpec.max} ${commandSpec.unit}`}
+          </p>
+        </div>
+      )}
+      {commandSpec && (
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="text-lg font-semibold mb-4">Send command</h3>
+          {commandSpec.type === "discrete" ? (
+            <div className="flex flex-wrap gap-2">
+              {commandSpec.commands.map((cmd) => (
+                <Button
+                  key={cmd}
+                  variant="outline"
+                  disabled={sending}
+                  onClick={() => handleSendDiscrete(cmd)}
+                >
+                  {sending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  {cmd}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4 max-w-xs">
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min={rangeMin}
+                  max={rangeMax}
+                  step={1}
+                  value={rangeValue}
+                  onChange={(e) => setRangeValue(Number(e.target.value))}
+                  className="flex-1 h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary"
+                />
+                <span className="text-sm font-mono tabular-nums shrink-0">
+                  {rangeValue} {rangeUnit}
+                </span>
+              </div>
+              <Button
+                variant="default"
+                disabled={sending}
+                onClick={handleSendRange}
+              >
+                {sending ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : null}
+                Send value
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
       <div className="rounded-lg border bg-card p-4">
         <h3 className="text-lg font-semibold mb-4">Command History</h3>
         <ActuatorChart deviceUuid={device.uuid} period={period} />

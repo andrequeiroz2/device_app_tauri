@@ -109,6 +109,16 @@ impl MqttClient {
     pub fn is_connected(&self) -> bool {
         self.client.is_connected()
     }
+
+    /// Publish a message to a topic. QoS 0. Used for device commands (e.g. trigger executor).
+    pub fn publish(&self, topic: &str, payload: &str, qos: i32) -> Result<(), String> {
+        let msg = Message::new(topic, payload.as_bytes(), qos);
+        self.client.publish(msg).map_err(|e| {
+            error!(error = %e, topic = %topic, "Failed to publish");
+            format!("Failed to publish to {}: {}", topic, e)
+        })?;
+        Ok(())
+    }
 }
 
 

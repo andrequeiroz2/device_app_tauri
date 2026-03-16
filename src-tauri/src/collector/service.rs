@@ -14,7 +14,7 @@ use crate::collector::persistence::query::{
 };
 use crate::collector::notifications::sender::NotificationSender;
 use crate::collector::notifications::events::NotificationEvent;
-use crate::collector::state::{CollectorCommand, CollectorState};
+use crate::collector::state::{CollectorCommand, CollectorState, PublishRequest};
 use sqlx::Pool;
 use sqlx::Sqlite;
 
@@ -208,6 +208,11 @@ async fn collector_command_loop(
                 });
                 monitor_handle = Some(handle);
             }
+            CollectorCommand::PublishMessage { topic, payload } => {
+                if let Err(e) = collector_state.send_publish(topic.clone(), payload.clone()).await {
+                    warn!(error = %e, "PublishMessage: failed (not connected or channel full)");
+                }
+            }
             CollectorCommand::DisconnectBroker => {
                 info!("Command: DisconnectBroker");
 
@@ -232,7 +237,7 @@ async fn run_monitor_with_reconnect(
     pool: Pool<Sqlite>,
     notification_sender: Option<NotificationSender>,
     stop_requested: Arc<AtomicBool>,
-    _collector_state: CollectorState,
+    collector_state: CollectorState,
     app: AppHandle,
 ) {
     let mut backoff_secs = 1u64;
@@ -242,7 +247,21 @@ async fn run_monitor_with_reconnect(
         if stop_requested.load(Ordering::SeqCst) {
             break;
         }
-        match try_connect_and_monitor(&broker, &pool, notification_sender.as_ref(), &stop_requested, is_reconnect, &app).await {
+
+        let (publish_tx, mut publish_rx) = tokio::sync::mpsc::channel::<PublishRequest>(32);
+        collector_state.set_publish_tx(Some(publish_tx));
+
+        match try_connect_and_monitor(
+            &broker,
+            &pool,
+            notification_sender.as_ref(),
+            &stop_requested,
+            is_reconnect,
+            &app,
+            &mut publish_rx,
+        )
+        .await
+        {
             Ok(true) => {
                 // Stopped by command (UserLoggedOut or broker switch)
                 break;
@@ -273,6 +292,8 @@ async fn run_monitor_with_reconnect(
             }
         }
 
+        collector_state.set_publish_tx(None);
+
         if stop_requested.load(Ordering::SeqCst) {
             break;
         }
@@ -283,9 +304,8 @@ async fn run_monitor_with_reconnect(
     }
 }
 
-/// Connects to broker, subscribes, monitors messages.
+/// Connects to broker, subscribes, monitors messages. Processes publish requests (e.g. trigger device commands).
 /// Returns Ok(true) if stopped by command, Ok(false) if connection lost, Err on connection error.
-/// When is_reconnect is true, sends MqttConnectionRestored on success (only when we recover from a previous loss).
 async fn try_connect_and_monitor(
     broker: &crate::collector::model::MqttBroker,
     pool: &Pool<Sqlite>,
@@ -293,6 +313,7 @@ async fn try_connect_and_monitor(
     stop_requested: &AtomicBool,
     is_reconnect: bool,
     app: &AppHandle,
+    publish_rx: &mut tokio::sync::mpsc::Receiver<PublishRequest>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let mut client = MqttClient::new(broker.clone())?;
 
@@ -318,6 +339,13 @@ async fn try_connect_and_monitor(
         if stop_requested.load(Ordering::SeqCst) {
             client.disconnect().await?;
             return Ok(true);
+        }
+
+        // Drain publish requests (e.g. trigger executor sending device command)
+        while let Ok((topic, payload)) = publish_rx.try_recv() {
+            if let Err(e) = client.publish(&topic, &payload, 0) {
+                error!(error = %e, topic = %topic, "Failed to publish device command");
+            }
         }
 
         let result = rx.recv_timeout(Duration::from_millis(500));
