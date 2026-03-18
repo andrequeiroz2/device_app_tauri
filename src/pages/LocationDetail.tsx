@@ -7,6 +7,7 @@ import { deviceApi } from "@/services/deviceApi";
 import type { DevicePublic } from "@/types/device";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
+import { DeviceInformationDialog } from "@/components/DeviceInformationDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +36,7 @@ import {
   Cpu,
   Lock,
   LockOpen,
+  Route,
   Info,
   BarChart2,
 } from "lucide-react";
@@ -61,6 +63,7 @@ const LocationDetail = () => {
     Array<{ device: DevicePublic; position_x: number; position_y: number }>
   >([]);
   const [openBarDeviceUuid, setOpenBarDeviceUuid] = useState<string | null>(null);
+  const [isBarHovered, setIsBarHovered] = useState(false);
   const [confirmingDeviceUuid, setConfirmingDeviceUuid] = useState<string | null>(null);
   const [editingAllocatedPositions, setEditingAllocatedPositions] = useState<
     Record<string, { position_x: number; position_y: number }>
@@ -77,6 +80,8 @@ const LocationDetail = () => {
   const barAutoCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
+
+  // Device information dialog encapsulates broker/topic details.
 
   const { data: location, isLoading, error: queryError } = useQuery({
     queryKey: ["location", uuid],
@@ -298,7 +303,12 @@ const LocationDetail = () => {
   }, [dragState, handleDragMove, handleDragEnd]);
 
   useEffect(() => {
-    if (!openBarDeviceUuid) return;
+    if (!openBarDeviceUuid) {
+      setIsBarHovered(false);
+      return;
+    }
+    if (isBarHovered || dragState) return;
+
     barAutoCloseTimeoutRef.current = setTimeout(() => {
       setEditingAllocatedPositions((prev) => {
         const next = { ...prev };
@@ -308,13 +318,14 @@ const LocationDetail = () => {
       setOpenBarDeviceUuid(null);
       barAutoCloseTimeoutRef.current = null;
     }, 5000);
+
     return () => {
       if (barAutoCloseTimeoutRef.current) {
         clearTimeout(barAutoCloseTimeoutRef.current);
         barAutoCloseTimeoutRef.current = null;
       }
     };
-  }, [openBarDeviceUuid]);
+  }, [openBarDeviceUuid, isBarHovered, dragState]);
 
   // Fase 3: atualização em tempo real da barra de status dos devices
   const deviceUuidsRef = useRef<Set<string>>(new Set());
@@ -646,12 +657,21 @@ const LocationDetail = () => {
                           <div
                             className="flex items-center gap-1 mb-1 px-2 py-1 rounded-md bg-popover border border-border shadow-md pointer-events-auto"
                             onDoubleClick={(e) => e.stopPropagation()}
+                            onMouseEnter={() => {
+                              setIsBarHovered(true);
+                              if (barAutoCloseTimeoutRef.current) {
+                                clearTimeout(barAutoCloseTimeoutRef.current);
+                                barAutoCloseTimeoutRef.current = null;
+                              }
+                            }}
+                            onMouseLeave={() => setIsBarHovered(false)}
                           >
                             {isPending || isEditingAllocated ? (
                               <button
                                 type="button"
                                 className="p-1 rounded hover:bg-accent disabled:opacity-50"
                                 aria-label={isPending ? "Confirm allocation" : "Save position"}
+                                title={isPending ? "Confirm allocation" : "Save position"}
                                 disabled={confirmingDeviceUuid === device.uuid}
                                 onClick={() =>
                                   handleConfirmAllocation(device.uuid, position_x, position_y)
@@ -668,6 +688,7 @@ const LocationDetail = () => {
                                 type="button"
                                 className="p-1 rounded hover:bg-accent"
                                 aria-label="Edit position"
+                                title="Edit position"
                                 onClick={() =>
                                   setEditingAllocatedPositions((prev) => ({
                                     ...prev,
@@ -682,6 +703,7 @@ const LocationDetail = () => {
                               type="button"
                               className="p-1 rounded hover:bg-accent"
                               aria-label="Device dashboard"
+                              title="Device dashboard"
                               onClick={() => navigate(`/devices/${device.uuid}/dashboard`)}
                             >
                               <BarChart2 className="w-4 h-4 text-muted-foreground" />
@@ -689,7 +711,21 @@ const LocationDetail = () => {
                             <button
                               type="button"
                               className="p-1 rounded hover:bg-accent"
+                              aria-label="Device triggers"
+                              title="Device triggers"
+                              onClick={() =>
+                                navigate(`/devices/${device.uuid}/triggers`, {
+                                  state: { fromLocationUuid: uuid },
+                                })
+                              }
+                            >
+                              <Route className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                            <button
+                              type="button"
+                              className="p-1 rounded hover:bg-accent"
                               aria-label="Device info"
+                              title="Device info"
                               onClick={() => setDeviceInfoPopupDevice(device)}
                             >
                               <Info className="w-4 h-4 text-muted-foreground" />
@@ -750,104 +786,13 @@ const LocationDetail = () => {
         </div>
       </div>
 
-      <AlertDialog
+      <DeviceInformationDialog
         open={!!deviceInfoPopupDevice}
-        onOpenChange={(open) => !open && setDeviceInfoPopupDevice(null)}
-      >
-        <AlertDialogContent className="max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Device Information</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              {deviceInfoPopupDevice && (
-                <div className="space-y-3 pt-2 text-left">
-                  <div>
-                    <p className="font-semibold text-foreground mb-0.5">Name</p>
-                    <p className="text-sm text-muted-foreground">{deviceInfoPopupDevice.name}</p>
-                  </div>
-                  {deviceInfoPopupDevice.description && (
-                    <div>
-                      <p className="font-semibold text-foreground mb-0.5">Description</p>
-                      <p className="text-sm text-muted-foreground">
-                        {deviceInfoPopupDevice.description}
-                      </p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="font-semibold text-foreground mb-0.5">Type</p>
-                    <p className="text-sm text-muted-foreground capitalize">
-                      {deviceInfoPopupDevice.device_type}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground mb-0.5">Model</p>
-                    <p className="text-sm text-muted-foreground">{deviceInfoPopupDevice.model}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground mb-0.5">MAC Address</p>
-                    <p className="text-sm text-muted-foreground font-mono">
-                      {deviceInfoPopupDevice.mac_address}
-                    </p>
-                  </div>
-                  {deviceInfoPopupDevice.operation_status && (
-                    <div>
-                      <p className="font-semibold text-foreground mb-0.5">Status</p>
-                      <p className="text-sm text-muted-foreground capitalize">
-                        {deviceInfoPopupDevice.operation_status}
-                      </p>
-                    </div>
-                  )}
-                  {deviceInfoPopupDevice.sensor_type && (
-                    <div>
-                      <p className="font-semibold text-foreground mb-0.5">Sensor Type</p>
-                      <p className="text-sm text-muted-foreground">
-                        {deviceInfoPopupDevice.sensor_type}
-                      </p>
-                    </div>
-                  )}
-                  {deviceInfoPopupDevice.actuator_type && (
-                    <div>
-                      <p className="font-semibold text-foreground mb-0.5">Actuator Type</p>
-                      <p className="text-sm text-muted-foreground">
-                        {deviceInfoPopupDevice.actuator_type}
-                      </p>
-                    </div>
-                  )}
-                  {deviceInfoPopupDevice.device_type === "sensor" &&
-                    deviceInfoPopupDevice.parameter_ranges &&
-                    Object.keys(deviceInfoPopupDevice.parameter_ranges).length > 0 && (
-                    <div>
-                      <p className="font-semibold text-foreground mb-0.5">Reading ranges</p>
-                      <ul className="text-sm text-muted-foreground list-none space-y-1">
-                        {Object.entries(deviceInfoPopupDevice.parameter_ranges).map(
-                          ([measurement, range]) => (
-                            <li key={measurement} className="font-mono">
-                              {measurement}: {range.min_reading}–{range.max_reading} {range.unit}
-                            </li>
-                          )
-                        )}
-                      </ul>
-                    </div>
-                  )}
-                  {deviceInfoPopupDevice.device_type === "actuator" &&
-                    deviceInfoPopupDevice.command_spec && (
-                    <div>
-                      <p className="font-semibold text-foreground mb-0.5">Command spec</p>
-                      <p className="text-sm text-muted-foreground">
-                        {deviceInfoPopupDevice.command_spec.type === "discrete"
-                          ? `Commands: ${deviceInfoPopupDevice.command_spec.commands.join(", ")}`
-                          : `Range: ${deviceInfoPopupDevice.command_spec.min}–${deviceInfoPopupDevice.command_spec.max} ${deviceInfoPopupDevice.command_spec.unit}`}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button onClick={() => setDeviceInfoPopupDevice(null)}>Close</Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        device={deviceInfoPopupDevice}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setDeviceInfoPopupDevice(null);
+        }}
+      />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

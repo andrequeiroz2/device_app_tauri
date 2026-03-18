@@ -333,6 +333,14 @@ const App = () => (
                   }
                 />
                 <Route
+                  path="/devices/:deviceUuid/triggers"
+                  element={
+                    <ProtectedRoute>
+                      <TriggersList />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
                   path="/locations/:uuid/devices/adopt"
                   element={
                     <ProtectedRoute>
