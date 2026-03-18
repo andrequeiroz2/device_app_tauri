@@ -186,6 +186,35 @@ pub async fn get_device_name_by_id_query(
     Ok(row.map(|r| r.0))
 }
 
+/// Gets the location name for a device (collector trigger-notification context).
+#[instrument(skip(pool), fields(device_id = device_id))]
+pub async fn get_location_name_by_device_id_query(
+    pool: &Pool<Sqlite>,
+    device_id: i64,
+) -> Result<Option<String>, String> {
+    let row: Option<(String,)> = sqlx::query_as(
+        r#"
+        SELECT l.name
+        FROM devices d
+        LEFT JOIN locations l ON d.location_id = l.id
+        WHERE d.id = ?1 AND d.is_active = 1
+        "#,
+    )
+    .bind(device_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        error!(
+            error = %e,
+            device_id = device_id,
+            "Failed to get location name by device id"
+        );
+        format!("Failed to get location name: {}", e)
+    })?;
+
+    Ok(row.map(|r| r.0))
+}
+
 /// Atualiza operation_status e last_seen_at do device por uuid.
 /// Retorna número de linhas afetadas (0 se device não existir).
 #[instrument(skip(pool), fields(device_uuid = %device_uuid))]

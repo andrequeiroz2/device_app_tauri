@@ -13,7 +13,8 @@ use crate::api::trigger::trigger_notifier::{
     format_trigger_notification_message, send_discord, send_telegram, TriggerNotificationContent,
 };
 use crate::api::trigger::trigger_query::triggers_list_active_by_device_and_source_query;
-use crate::collector::persistence::query::get_device_name_by_id_query;
+use crate::api::trigger::trigger_query::try_acquire_notification_cooldown_query;
+use crate::collector::persistence::query::{get_device_name_by_id_query, get_location_name_by_device_id_query};
 use crate::collector::state::CollectorState;
 
 /// (measurement, value, scale, recorded_at) - same as SensorReadingTuple in data_processor.
@@ -36,6 +37,18 @@ pub async fn run_sensor_reading_triggers(
         Err(e) => {
             error!(error = %e, "get_device_name_by_id for triggers");
             return;
+        }
+    };
+
+    let location_name = match get_location_name_by_device_id_query(pool, device_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            warn!(
+                device_id = device_id,
+                error = %e,
+                "Failed to fetch location name for trigger notification"
+            );
+            None
         }
     };
 
@@ -70,6 +83,7 @@ pub async fn run_sensor_reading_triggers(
             }
             let content = TriggerNotificationContent {
                 device_name: &device_name,
+                location_name: location_name.as_deref(),
                 subject: measurement,
                 value: &value_str,
                 timestamp,
@@ -118,6 +132,18 @@ pub async fn run_device_command_triggers(
         .unwrap_or_else(|| command_payload_json.to_string());
     let timestamp = chrono::Utc::now().to_rfc3339();
 
+    let location_name = match get_location_name_by_device_id_query(pool, device_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            warn!(
+                device_id = device_id,
+                error = %e,
+                "Failed to fetch location name for trigger notification"
+            );
+            None
+        }
+    };
+
     for trigger in &triggers {
         let cond: Value = match serde_json::from_str(&trigger.condition_json) {
             Ok(v) => v,
@@ -128,6 +154,7 @@ pub async fn run_device_command_triggers(
         }
         let content = TriggerNotificationContent {
             device_name,
+            location_name: location_name.as_deref(),
             subject: "command",
             value: &value_str,
             timestamp: &timestamp,
@@ -167,10 +194,62 @@ async fn run_trigger_action(
         }
     };
 
-    let msg = format_trigger_notification_message(content);
+    let severity = match config_obj.get("severity") {
+        None => "inf",
+        Some(v) => match v.as_str() {
+            Some(s) => match s {
+                "inf" | "att" | "warn" | "critical" => s,
+                _ => {
+                    warn!(
+                        trigger_uuid = %trigger.uuid,
+                        invalid_severity = s,
+                        "Invalid severity in action_config_json; falling back to 'inf'"
+                    );
+                    "inf"
+                }
+            },
+            None => {
+                warn!(
+                    trigger_uuid = %trigger.uuid,
+                    "severity in action_config_json is not a string; falling back to 'inf'"
+                );
+                "inf"
+            }
+        },
+    };
+    let msg = format_trigger_notification_message(content, severity);
 
     match trigger.action_type.as_str() {
         "discord" => {
+            if trigger.cooldown_seconds > 0 {
+                let now_iso = chrono::Utc::now().to_rfc3339();
+                let acquired = match try_acquire_notification_cooldown_query(
+                    pool,
+                    &trigger.uuid,
+                    &now_iso,
+                )
+                .await
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!(
+                            trigger_uuid = %trigger.uuid,
+                            error = %e,
+                            "cooldown acquire (discord) failed"
+                        );
+                        return;
+                    }
+                };
+                if !acquired {
+                    tracing::debug!(
+                        trigger_uuid = %trigger.uuid,
+                        cooldown_seconds = trigger.cooldown_seconds,
+                        severity = severity,
+                        "Cooldown blocked discord notification"
+                    );
+                    return;
+                }
+            }
             let webhook_url = match config_obj.get("webhook_url").and_then(Value::as_str) {
                 Some(u) => u,
                 None => {
@@ -178,11 +257,46 @@ async fn run_trigger_action(
                     return;
                 }
             };
+            tracing::debug!(
+                trigger_uuid = %trigger.uuid,
+                severity = severity,
+                msg_len = msg.len(),
+                "Dispatching discord notification"
+            );
             if let Err(e) = send_discord(webhook_url, &msg).await {
                 error!(trigger_uuid = %trigger.uuid, error = %e, "send_discord failed");
             }
         }
         "telegram" => {
+            if trigger.cooldown_seconds > 0 {
+                let now_iso = chrono::Utc::now().to_rfc3339();
+                let acquired = match try_acquire_notification_cooldown_query(
+                    pool,
+                    &trigger.uuid,
+                    &now_iso,
+                )
+                .await
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!(
+                            trigger_uuid = %trigger.uuid,
+                            error = %e,
+                            "cooldown acquire (telegram) failed"
+                        );
+                        return;
+                    }
+                };
+                if !acquired {
+                    tracing::debug!(
+                        trigger_uuid = %trigger.uuid,
+                        cooldown_seconds = trigger.cooldown_seconds,
+                        severity = severity,
+                        "Cooldown blocked telegram notification"
+                    );
+                    return;
+                }
+            }
             let bot_token = match config_obj.get("bot_token").and_then(Value::as_str) {
                 Some(t) => t,
                 None => {
@@ -198,6 +312,12 @@ async fn run_trigger_action(
                     return;
                 }
             };
+            tracing::debug!(
+                trigger_uuid = %trigger.uuid,
+                severity = severity,
+                msg_len = msg.len(),
+                "Dispatching telegram notification"
+            );
             if let Err(e) = send_telegram(bot_token, &chat_id, &msg).await {
                 error!(trigger_uuid = %trigger.uuid, error = %e, "send_telegram failed");
             }

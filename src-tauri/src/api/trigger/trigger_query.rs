@@ -16,12 +16,14 @@ pub async fn trigger_insert_query(
         r#"
         INSERT INTO triggers (
             uuid, user_id, device_id, name, source_event,
-            condition_json, action_type, action_config_json, is_active
+            condition_json, action_type, action_config_json, is_active,
+            cooldown_seconds, last_notification_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
         RETURNING
             id, uuid, user_id, device_id, name, source_event,
             condition_json, action_type, action_config_json, is_active,
+            cooldown_seconds, last_notification_at,
             created_at, updated_at
         "#,
     )
@@ -34,6 +36,8 @@ pub async fn trigger_insert_query(
     .bind(&trigger.action_type)
     .bind(&trigger.action_config_json)
     .bind(trigger.is_active)
+    .bind(trigger.cooldown_seconds)
+    .bind(&trigger.last_notification_at)
     .fetch_one(pool)
     .await
     .map_err(|e| {
@@ -101,6 +105,7 @@ pub async fn trigger_list_query(
             SELECT
                 t.id, t.uuid, t.user_id, t.device_id, t.name, t.source_event,
                 t.condition_json, t.action_type, t.action_config_json, t.is_active,
+                t.cooldown_seconds, t.last_notification_at,
                 t.created_at, t.updated_at,
                 d.uuid as device_uuid
             FROM triggers t
@@ -119,6 +124,7 @@ pub async fn trigger_list_query(
             SELECT
                 t.id, t.uuid, t.user_id, t.device_id, t.name, t.source_event,
                 t.condition_json, t.action_type, t.action_config_json, t.is_active,
+                t.cooldown_seconds, t.last_notification_at,
                 t.created_at, t.updated_at,
                 d.uuid as device_uuid
             FROM triggers t
@@ -163,6 +169,7 @@ pub async fn trigger_list_query(
                 action_type: r.action_type,
                 action_config_json,
                 is_active: r.is_active,
+                cooldown_seconds: r.cooldown_seconds,
                 created_at: r.created_at,
                 updated_at: r.updated_at,
             }
@@ -190,6 +197,7 @@ pub async fn triggers_list_active_by_device_and_source_query(
         r#"
         SELECT id, uuid, user_id, device_id, name, source_event,
                condition_json, action_type, action_config_json, is_active,
+               cooldown_seconds, last_notification_at,
                created_at, updated_at
         FROM triggers
         WHERE device_id = ?1 AND source_event = ?2 AND is_active = 1
@@ -259,6 +267,7 @@ pub async fn trigger_get_by_uuid_query(
         SELECT
             t.id, t.uuid, t.user_id, t.device_id, t.name, t.source_event,
             t.condition_json, t.action_type, t.action_config_json, t.is_active,
+            t.cooldown_seconds, t.last_notification_at,
             t.created_at, t.updated_at,
             d.uuid as device_uuid
         FROM triggers t
@@ -288,6 +297,8 @@ pub async fn trigger_get_by_uuid_query(
         action_type: r.action_type,
         action_config_json: r.action_config_json,
         is_active: r.is_active,
+        cooldown_seconds: r.cooldown_seconds,
+        last_notification_at: r.last_notification_at,
         created_at: r.created_at,
         updated_at: r.updated_at,
     };
@@ -333,6 +344,10 @@ pub async fn trigger_update_query(
         set_clauses.push(format!("is_active = ?{}", bind_index));
         bind_index += 1;
     }
+    if update_data.cooldown_seconds.is_some() {
+        set_clauses.push(format!("cooldown_seconds = ?{}", bind_index));
+        bind_index += 1;
+    }
 
     if set_clauses.is_empty() {
         return Err("No fields to update".to_string());
@@ -350,6 +365,7 @@ pub async fn trigger_update_query(
         RETURNING
             id, uuid, user_id, device_id, name, source_event,
             condition_json, action_type, action_config_json, is_active,
+            cooldown_seconds, last_notification_at,
             created_at, updated_at
         "#,
         set_clause, uuid_bind, user_id_bind
@@ -378,6 +394,9 @@ pub async fn trigger_update_query(
     if let Some(active) = update_data.is_active {
         query_builder = query_builder.bind(active);
     }
+    if let Some(cd) = update_data.cooldown_seconds {
+        query_builder = query_builder.bind(cd);
+    }
 
     query_builder = query_builder.bind(trigger_uuid).bind(user_id);
 
@@ -387,4 +406,232 @@ pub async fn trigger_update_query(
     })?;
 
     rec.ok_or("Trigger not found".to_string())
+}
+
+#[instrument(skip(pool), fields(trigger_uuid = %trigger_uuid))]
+pub async fn try_acquire_notification_cooldown_query(
+    pool: &Pool<Sqlite>,
+    trigger_uuid: &str,
+    now_iso: &str,
+) -> Result<bool, String> {
+    // Atomic cooldown claim:
+    // - only updates last_notification_at when cooldown window is satisfied
+    // - avoids duplicate sends under concurrent trigger evaluations
+    let res = sqlx::query(
+        r#"
+        UPDATE triggers
+        SET last_notification_at = ?1
+        WHERE uuid = ?2
+          AND cooldown_seconds > 0
+          AND (
+            last_notification_at IS NULL
+            OR datetime(?1) >= datetime(last_notification_at, '+' || cooldown_seconds || ' seconds')
+          )
+        "#,
+    )
+    .bind(now_iso)
+    .bind(trigger_uuid)
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "fn: try_acquire_notification_cooldown_query");
+        map_trigger_db_error(&e)
+    })?;
+
+    let acquired = res.rows_affected() > 0;
+    if !acquired {
+        tracing::debug!(
+            trigger_uuid = %trigger_uuid,
+            now_iso = %now_iso,
+            "Cooldown not satisfied; notification not acquired"
+        );
+    }
+
+    Ok(acquired)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::database::schema_sqlite::init_sqlite_schema;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn setup_pool_with_user_and_trigger(
+        cooldown_seconds: i64,
+        last_notification_at: Option<&str>,
+    ) -> (Pool<Sqlite>, String) {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("failed to create sqlite memory pool");
+
+        init_sqlite_schema(&pool)
+            .await
+            .expect("failed to init sqlite schema");
+
+        let user_uuid = "user-00000000-0000-0000-0000-000000000001".to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO users (uuid, username, email, password, is_active)
+            VALUES (?1, ?2, ?3, ?4, 1)
+            "#,
+        )
+        .bind(&user_uuid)
+        .bind("tester")
+        .bind("tester@example.com")
+        .bind("password_hash")
+        .execute(&pool)
+        .await
+        .expect("failed to insert user");
+
+        let user_id: i64 = sqlx::query_scalar("SELECT id FROM users WHERE uuid = ?1")
+            .bind(&user_uuid)
+            .fetch_one(&pool)
+            .await
+            .expect("failed to fetch user id");
+
+        let trigger_uuid = "trigger-00000000-0000-0000-0000-000000000001".to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO triggers (
+                uuid,
+                user_id,
+                name,
+                source_event,
+                condition_json,
+                action_type,
+                action_config_json,
+                is_active,
+                cooldown_seconds,
+                last_notification_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#,
+        )
+        .bind(&trigger_uuid)
+        .bind(user_id)
+        .bind("T-1")
+        .bind("sensor_reading")
+        .bind("{}")
+        .bind("telegram")
+        .bind(r#"{"severity":"inf","bot_token":"x","chat_id":"1"}"#)
+        .bind(1i64)
+        .bind(cooldown_seconds)
+        .bind(last_notification_at)
+        .execute(&pool)
+        .await
+        .expect("failed to insert trigger");
+
+        (pool, trigger_uuid)
+    }
+
+    #[tokio::test]
+    async fn cooldown_0_never_acquires() {
+        let (pool, trigger_uuid) =
+            setup_pool_with_user_and_trigger(0, None).await;
+
+        let acquired = try_acquire_notification_cooldown_query(
+            &pool,
+            &trigger_uuid,
+            "2026-01-01 00:00:00",
+        )
+        .await
+        .expect("query should succeed");
+
+        assert!(!acquired, "cooldown_seconds=0 must not acquire");
+
+        let last: Option<String> = sqlx::query_scalar(
+            "SELECT last_notification_at FROM triggers WHERE uuid = ?1",
+        )
+        .bind(&trigger_uuid)
+        .fetch_one(&pool)
+        .await
+        .expect("select last_notification_at");
+
+        assert!(last.is_none(), "last_notification_at must remain NULL");
+    }
+
+    #[tokio::test]
+    async fn cooldown_acquires_when_last_notification_is_null() {
+        let (pool, trigger_uuid) =
+            setup_pool_with_user_and_trigger(10, None).await;
+
+        let now = "2026-01-01 00:00:00";
+        let acquired =
+            try_acquire_notification_cooldown_query(&pool, &trigger_uuid, now)
+                .await
+                .expect("query should succeed");
+
+        assert!(acquired, "should acquire when last_notification_at is NULL");
+
+        let last: Option<String> = sqlx::query_scalar(
+            "SELECT last_notification_at FROM triggers WHERE uuid = ?1",
+        )
+        .bind(&trigger_uuid)
+        .fetch_one(&pool)
+        .await
+        .expect("select last_notification_at");
+
+        assert_eq!(last.as_deref(), Some(now));
+    }
+
+    #[tokio::test]
+    async fn cooldown_does_not_acquire_within_cooldown_window() {
+        let (pool, trigger_uuid) = setup_pool_with_user_and_trigger(
+            10,
+            Some("2026-01-01 00:00:00"),
+        )
+        .await;
+
+        // Same "now" => within the cooldown window.
+        let acquired = try_acquire_notification_cooldown_query(
+            &pool,
+            &trigger_uuid,
+            "2026-01-01 00:00:00",
+        )
+        .await
+        .expect("query should succeed");
+
+        assert!(!acquired, "should not acquire within cooldown window");
+
+        let last: Option<String> = sqlx::query_scalar(
+            "SELECT last_notification_at FROM triggers WHERE uuid = ?1",
+        )
+        .bind(&trigger_uuid)
+        .fetch_one(&pool)
+        .await
+        .expect("select last_notification_at");
+
+        assert_eq!(
+            last.as_deref(),
+            Some("2026-01-01 00:00:00")
+        );
+    }
+
+    #[tokio::test]
+    async fn cooldown_acquires_after_window_expires() {
+        let (pool, trigger_uuid) = setup_pool_with_user_and_trigger(
+            30,
+            Some("2026-01-01 00:00:00"),
+        )
+        .await;
+
+        let now = "2026-01-01 00:00:31";
+        let acquired = try_acquire_notification_cooldown_query(&pool, &trigger_uuid, now)
+            .await
+            .expect("query should succeed");
+
+        assert!(acquired, "should acquire after cooldown window expires");
+
+        let last: Option<String> = sqlx::query_scalar(
+            "SELECT last_notification_at FROM triggers WHERE uuid = ?1",
+        )
+        .bind(&trigger_uuid)
+        .fetch_one(&pool)
+        .await
+        .expect("select last_notification_at");
+
+        assert_eq!(last.as_deref(), Some(now));
+    }
 }

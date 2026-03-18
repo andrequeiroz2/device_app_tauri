@@ -337,6 +337,8 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
             action_type TEXT NOT NULL CHECK(action_type IN ('discord', 'telegram', 'device_command')),
             action_config_json TEXT NOT NULL,
             is_active BOOLEAN DEFAULT TRUE,
+            cooldown_seconds INTEGER NOT NULL DEFAULT 0,
+            last_notification_at TEXT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -371,6 +373,14 @@ pub async fn init_sqlite_schema(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> 
     // Migration: parameter_ranges (sensor) and command_spec (actuator) — Task_Device_Types_Sensor_Actuator_Ranges
     let _ = sqlx::query("ALTER TABLE devices ADD COLUMN parameter_ranges TEXT").execute(pool).await;
     let _ = sqlx::query("ALTER TABLE devices ADD COLUMN command_spec TEXT").execute(pool).await;
+
+    // Migration: cooldown for discord/telegram triggers
+    let _ = sqlx::query("ALTER TABLE triggers ADD COLUMN cooldown_seconds INTEGER NOT NULL DEFAULT 0")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE triggers ADD COLUMN last_notification_at TEXT NULL")
+        .execute(pool)
+        .await;
 
     Ok(())
 }

@@ -259,6 +259,7 @@ pub async fn update_trigger_handler(
         .as_ref()
         .map(|v| v.to_string());
     update_db.is_active = input.is_active;
+    update_db.cooldown_seconds = input.cooldown_seconds;
 
     trigger_update_query(user.id, &input.uuid, &update_db, pool)
         .await
@@ -327,12 +328,17 @@ pub async fn trigger_send_test_handler(
 
     let content = TriggerNotificationContent {
         device_name: "Test device",
+        location_name: None,
         subject: "test",
         value: "This is a test notification",
         timestamp: &chrono::Utc::now().to_rfc3339(),
         trigger_name: Some(&trigger.name),
     };
-    let msg = format_trigger_notification_message(&content);
+    let severity = config_obj
+        .get("severity")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("inf");
+    let msg = format_trigger_notification_message(&content, severity);
 
     match trigger.action_type.as_str() {
         "discord" => {
@@ -382,6 +388,7 @@ fn trigger_to_public(
         action_type: trigger.action_type.clone(),
         action_config_json,
         is_active: trigger.is_active,
+        cooldown_seconds: trigger.cooldown_seconds,
         created_at: trigger.created_at.clone(),
         updated_at: trigger.updated_at.clone(),
     }

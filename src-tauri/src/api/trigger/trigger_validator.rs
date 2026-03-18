@@ -181,7 +181,7 @@ fn validate_discord_config(obj: &serde_json::Map<String, Value>) -> Result<(), S
             DISCORD_WEBHOOK_PREFIX
         ));
     }
-    Ok(())
+    validate_optional_severity(obj)
 }
 
 fn validate_telegram_config(obj: &serde_json::Map<String, Value>) -> Result<(), String> {
@@ -205,7 +205,24 @@ fn validate_telegram_config(obj: &serde_json::Map<String, Value>) -> Result<(), 
         return Err("action_config_json: chat_id must be string or number".to_string());
     }
 
-    Ok(())
+    validate_optional_severity(obj)
+}
+
+fn validate_optional_severity(obj: &serde_json::Map<String, Value>) -> Result<(), String> {
+    if let Some(sev_val) = obj.get("severity") {
+        let sev = sev_val
+            .as_str()
+            .ok_or("action_config_json: severity must be a string")?;
+        match sev {
+            "inf" | "att" | "warn" | "critical" => Ok(()),
+            _ => Err(format!(
+                "action_config_json: invalid severity '{}'",
+                sev
+            )),
+        }
+    } else {
+        Ok(())
+    }
 }
 
 fn validate_device_command_config(obj: &serde_json::Map<String, Value>) -> Result<(), String> {

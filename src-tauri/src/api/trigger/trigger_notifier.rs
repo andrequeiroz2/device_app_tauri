@@ -9,6 +9,8 @@ const HTTP_TIMEOUT_SECS: u64 = 10;
 pub struct TriggerNotificationContent<'a> {
     /// Device name (source of the event).
     pub device_name: &'a str,
+    /// Optional location name where the device is placed.
+    pub location_name: Option<&'a str>,
     /// Event type: measurement (e.g. "temperature", "gas_concentration") or "command" (e.g. "ON", "OFF").
     pub subject: &'a str,
     /// Value: sensor reading or command sent.
@@ -21,15 +23,35 @@ pub struct TriggerNotificationContent<'a> {
 
 /// Formats the standard message for trigger notifications.
 /// Includes device name, measurement/command, value and timestamp.
-pub fn format_trigger_notification_message(content: &TriggerNotificationContent<'_>) -> String {
+pub fn format_trigger_notification_message(
+    content: &TriggerNotificationContent<'_>,
+    severity: &str,
+) -> String {
     let trigger_part = content
         .trigger_name
         .map(|n| format!("[{}] ", n))
         .unwrap_or_default();
+
+    let (icon, label) = match severity {
+        "inf" => ("ℹ️", "INFO"),
+        "att" => ("❕", "ATTENTION"),
+        "warn" => ("🟡", "WARN"),
+        "critical" => ("🔴", "CRITICAL"),
+        _ => ("ℹ️", "INFO"),
+    };
+
+    let location_part = content
+        .location_name
+        .map(|n| format!(" | Location: {}", n))
+        .unwrap_or_default();
+
     format!(
-        "{}Device: {} | {}: {} | {}",
+        "{} {} {}Device: {}{} | {}: {} | {}",
+        icon,
+        label,
         trigger_part,
         content.device_name,
+        location_part,
         content.subject,
         content.value,
         content.timestamp
@@ -166,12 +188,13 @@ mod tests {
     fn format_notification_message() {
         let content = TriggerNotificationContent {
             device_name: "Sala",
+            location_name: None,
             subject: "temperature",
             value: "85",
             timestamp: "2025-02-28 10:30:00",
             trigger_name: Some("Alerta temperatura"),
         };
-        let msg = format_trigger_notification_message(&content);
+        let msg = format_trigger_notification_message(&content, "inf");
         assert!(msg.contains("[Alerta temperatura]"));
         assert!(msg.contains("Device: Sala"));
         assert!(msg.contains("temperature: 85"));
@@ -179,13 +202,17 @@ mod tests {
 
         let no_trigger = TriggerNotificationContent {
             device_name: "Cozinha",
+            location_name: None,
             subject: "command",
             value: "ON",
             timestamp: "2025-02-28 11:00:00",
             trigger_name: None,
         };
-        let msg2 = format_trigger_notification_message(&no_trigger);
-        assert_eq!(msg2, "Device: Cozinha | command: ON | 2025-02-28 11:00:00");
+        let msg2 = format_trigger_notification_message(&no_trigger, "inf");
+        assert_eq!(
+            msg2,
+            "ℹ️ INFO Device: Cozinha | command: ON | 2025-02-28 11:00:00"
+        );
     }
 
     /// Mock HTTP: Discord webhook receives POST with JSON body {"content": "..."}.

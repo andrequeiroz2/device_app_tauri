@@ -78,6 +78,8 @@ pub struct Trigger {
     pub action_type: String,
     pub action_config_json: String,
     pub is_active: bool,
+    pub cooldown_seconds: i64,
+    pub last_notification_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -95,6 +97,8 @@ pub struct TriggerWithDeviceRow {
     pub action_type: String,
     pub action_config_json: String,
     pub is_active: bool,
+    pub cooldown_seconds: i64,
+    pub last_notification_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub device_uuid: Option<String>,
@@ -110,6 +114,7 @@ pub struct TriggerPublic {
     pub action_type: String,
     pub action_config_json: serde_json::Value,
     pub is_active: bool,
+    pub cooldown_seconds: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -122,6 +127,8 @@ pub struct TriggerCreateInput {
     pub condition_json: serde_json::Value,
     pub action_type: String,
     pub action_config_json: serde_json::Value,
+    #[serde(default)]
+    pub cooldown_seconds: i64,
     #[serde(default = "default_is_active")]
     pub is_active: bool,
 }
@@ -139,6 +146,7 @@ pub struct TriggerUpdateInput {
     pub condition_json: Option<serde_json::Value>,
     pub action_type: Option<String>,
     pub action_config_json: Option<serde_json::Value>,
+    pub cooldown_seconds: Option<i64>,
     pub is_active: Option<bool>,
 }
 
@@ -174,7 +182,9 @@ pub struct TriggerCreateDB {
     pub condition_json: String,
     pub action_type: String,
     pub action_config_json: String,
+    pub cooldown_seconds: i64,
     pub is_active: bool,
+    pub last_notification_at: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -185,6 +195,7 @@ pub struct TriggerUpdateDB {
     pub condition_json: Option<String>,
     pub action_type: Option<String>,
     pub action_config_json: Option<String>,
+    pub cooldown_seconds: Option<i64>,
     pub is_active: Option<bool>,
 }
 
@@ -210,6 +221,10 @@ impl TriggerCreateInput {
         validate_condition_json(&self.source_event, &self.condition_json)?;
         validate_action_config_json(&self.action_type, &self.action_config_json)?;
 
+        if self.cooldown_seconds < 0 {
+            return Err("cooldown_seconds must be >= 0".to_string());
+        }
+
         Ok(())
     }
 
@@ -223,7 +238,9 @@ impl TriggerCreateInput {
             condition_json: self.condition_json.to_string(),
             action_type: self.action_type.clone(),
             action_config_json: self.action_config_json.to_string(),
+            cooldown_seconds: self.cooldown_seconds,
             is_active: self.is_active,
+            last_notification_at: None,
         }
     }
 }
@@ -241,6 +258,7 @@ impl TriggerUpdateInput {
             || self.condition_json.is_some()
             || self.action_type.is_some()
             || self.action_config_json.is_some()
+            || self.cooldown_seconds.is_some()
             || self.is_active.is_some();
 
         if !has_updates {
@@ -276,6 +294,12 @@ impl TriggerUpdateInput {
                 .as_ref()
                 .ok_or("action_type is required when updating action_config_json")?;
             validate_action_config_json(at, cfg)?;
+        }
+
+        if let Some(cd) = self.cooldown_seconds {
+            if cd < 0 {
+                return Err("cooldown_seconds must be >= 0".to_string());
+            }
         }
 
         Ok(())

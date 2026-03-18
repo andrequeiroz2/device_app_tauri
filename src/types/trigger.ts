@@ -7,6 +7,7 @@ export type TriggerPublic = {
   condition_json: ConditionJson;
   action_type: ActionType;
   action_config_json: ActionConfigJson;
+  cooldown_seconds?: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -14,6 +15,8 @@ export type TriggerPublic = {
 
 export type SourceEvent = "sensor_reading" | "device_command" | "schedule";
 export type ActionType = "discord" | "telegram" | "device_command";
+
+export type TriggerSeverity = "inf" | "att" | "warn" | "critical";
 
 /** Condition shapes by source_event */
 export type ConditionSensorReading = {
@@ -36,8 +39,8 @@ export type ConditionJson =
   | ConditionSchedule;
 
 /** Action config shapes by action_type */
-export type ActionConfigDiscord = { webhook_url: string };
-export type ActionConfigTelegram = { bot_token: string; chat_id: string };
+export type ActionConfigDiscord = { webhook_url: string; severity?: TriggerSeverity };
+export type ActionConfigTelegram = { bot_token: string; chat_id: string; severity?: TriggerSeverity };
 export type ActionConfigDeviceCommand =
   | { target_device_uuid: string; command: string }
   | { target_device_uuid: string; command_payload: Record<string, unknown> };
@@ -71,6 +74,7 @@ export type TriggerCreateInput = {
   condition_json: ConditionJson;
   action_type: ActionType;
   action_config_json: ActionConfigJson;
+  cooldown_seconds?: number;
   is_active?: boolean;
 };
 
@@ -82,5 +86,6 @@ export type TriggerUpdateInput = {
   condition_json?: ConditionJson;
   action_type?: ActionType;
   action_config_json?: ActionConfigJson;
+  cooldown_seconds?: number;
   is_active?: boolean;
 };

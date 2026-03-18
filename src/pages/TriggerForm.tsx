@@ -5,7 +5,7 @@ import { triggerApi } from "@/services/triggerApi";
 import { deviceApi } from "@/services/deviceApi";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Loader2, ArrowLeft, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, Eye, EyeOff, Info, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import type {
   TriggerCreateInput,
@@ -16,7 +16,9 @@ import type {
   ActionConfigJson,
   ConditionSensorReading,
   ConditionSchedule,
+  TriggerSeverity,
   ActionConfigTelegram,
+  ActionConfigDiscord,
 } from "@/types/trigger";
 import type { DevicePublic } from "@/types/device";
 import { cn } from "@/lib/utils";
@@ -67,8 +69,10 @@ export default function TriggerForm() {
     value: 0,
   });
   const [actionType, setActionType] = useState<ActionType>("discord");
+  const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
   const [actionConfig, setActionConfig] = useState<ActionConfigJson>({
     webhook_url: "",
+    severity: "inf",
   });
   const [isActive, setIsActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -124,6 +128,11 @@ export default function TriggerForm() {
         )
       : null;
 
+  const currentSeverity: TriggerSeverity = (actionConfig as
+    | ActionConfigDiscord
+    | ActionConfigTelegram
+    | { severity?: TriggerSeverity }).severity ?? "inf";
+
   useEffect(() => {
     if (sourceEvent !== "sensor_reading" || !selectedDevice || sensorMeasurementsWithRange.length === 0) return;
     const c = condition as ConditionSensorReading;
@@ -176,6 +185,7 @@ export default function TriggerForm() {
     setCondition(triggerData.condition_json as ConditionJson);
     setActionType(triggerData.action_type as ActionType);
     setActionConfig(triggerData.action_config_json as ActionConfigJson);
+    setCooldownSeconds(triggerData.cooldown_seconds ?? 0);
     setIsActive(triggerData.is_active);
   }, [triggerData]);
 
@@ -220,6 +230,12 @@ export default function TriggerForm() {
       if (!(actionConfig as { target_device_uuid?: string }).target_device_uuid) errors.target_device = "Target device is required.";
       if (!(actionConfig as { command?: string }).command?.trim()) errors.command = "Command is required.";
     }
+
+    if (actionType === "discord" || actionType === "telegram") {
+      if (!Number.isInteger(cooldownSeconds) || cooldownSeconds < 0) {
+        errors.cooldown_seconds = "Cooldown must be an integer >= 0.";
+      }
+    }
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       toast.error("Please fix the errors below.");
@@ -238,6 +254,9 @@ export default function TriggerForm() {
         condition_json: conditionJson,
         action_type: actionType,
         action_config_json: actionConfig,
+        ...(actionType === "discord" || actionType === "telegram"
+          ? { cooldown_seconds: cooldownSeconds }
+          : {}),
         is_active: isActive,
       };
       const result = await triggerApi.updateTrigger(token, payload);
@@ -260,6 +279,9 @@ export default function TriggerForm() {
         condition_json: conditionJson,
         action_type: actionType,
         action_config_json: actionConfig,
+        ...(actionType === "discord" || actionType === "telegram"
+          ? { cooldown_seconds: cooldownSeconds }
+          : {}),
         is_active: isActive,
       };
       const result = await triggerApi.createTrigger(token, payload);
@@ -424,8 +446,10 @@ export default function TriggerForm() {
                         type="button"
                         onClick={() => {
                           setActionType(a);
-                          if (a === "discord") setActionConfig({ webhook_url: "" });
-                          if (a === "telegram") setActionConfig({ bot_token: "", chat_id: "" });
+                          if (a === "discord")
+                            setActionConfig({ webhook_url: "", severity: "inf" });
+                          if (a === "telegram")
+                            setActionConfig({ bot_token: "", chat_id: "", severity: "inf" });
                           if (a === "device_command")
                             setActionConfig({ target_device_uuid: "", command: "" });
                           setFieldErrors((prev) => {
@@ -435,6 +459,7 @@ export default function TriggerForm() {
                             delete next.chat_id;
                             delete next.target_device;
                             delete next.command;
+                            delete next.cooldown_seconds;
                             return next;
                           });
                         }}
@@ -466,13 +491,119 @@ export default function TriggerForm() {
                     placeholder="https://discord.com/api/webhooks/..."
                     value={(actionConfig as { webhook_url?: string }).webhook_url ?? ""}
                     onChange={(e) => {
-                      setActionConfig({ webhook_url: e.target.value });
+                      setActionConfig((c) => ({
+                        ...(c as ActionConfigDiscord),
+                        webhook_url: e.target.value,
+                      }));
                       if (fieldErrors.webhook_url) setFieldErrors((prev) => ({ ...prev, webhook_url: "" }));
                     }}
                     aria-invalid={!!fieldErrors.webhook_url}
                   />
                   {fieldErrors.webhook_url && (
                     <p className="text-sm text-destructive mt-1">{fieldErrors.webhook_url}</p>
+                  )}
+
+                  {(actionType === "discord" || actionType === "telegram") && (
+                    <div className="space-y-3 pt-2">
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">
+                          Cooldown (seconds)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          className={cn(
+                            "w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary",
+                            fieldErrors.cooldown_seconds
+                              ? "border-destructive bg-transparent"
+                              : "border-input bg-transparent"
+                          )}
+                          value={cooldownSeconds}
+                          onChange={(e) => {
+                            const n = Number(e.target.value);
+                            const next =
+                              Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+                            setCooldownSeconds(next);
+                            if (fieldErrors.cooldown_seconds) {
+                              setFieldErrors((prev) => ({
+                                ...prev,
+                                cooldown_seconds: "",
+                              }));
+                            }
+                          }}
+                          aria-invalid={!!fieldErrors.cooldown_seconds}
+                        />
+                        {fieldErrors.cooldown_seconds && (
+                          <p className="text-sm text-destructive mt-1">
+                            {fieldErrors.cooldown_seconds}
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium block mb-2">
+                          Severity
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          {([
+                            { value: "inf", label: "Info", tone: "text-primary" },
+                            {
+                              value: "att",
+                              label: "Attention",
+                              tone: "text-amber-500",
+                            },
+                            {
+                              value: "warn",
+                              label: "Warn",
+                              tone: "text-orange-500",
+                            },
+                            {
+                              value: "critical",
+                              label: "Critical",
+                              tone: "text-red-500",
+                            },
+                          ] as { value: TriggerSeverity; label: string; tone: string }[]).map(
+                            ({ value, label, tone }) => {
+                              const selected = currentSeverity === value;
+                              const isInfo = value === "inf";
+                              return (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => {
+                                    if (actionType === "discord") {
+                                      setActionConfig((c) => ({
+                                        ...(c as ActionConfigDiscord),
+                                        severity: value,
+                                      }));
+                                    } else if (actionType === "telegram") {
+                                      setActionConfig((c) => ({
+                                        ...(c as ActionConfigTelegram),
+                                        severity: value,
+                                      }));
+                                    }
+                                  }}
+                                  className={cn(
+                                    "flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-colors text-sm font-medium",
+                                    selected
+                                      ? "border-primary bg-primary/10"
+                                      : "border-border hover:bg-muted/50 hover:border-muted-foreground/30"
+                                  )}
+                                >
+                                  {isInfo ? (
+                                    <Info className={cn("w-4 h-4", tone)} />
+                                  ) : (
+                                    <AlertCircle className={cn("w-4 h-4", tone)} />
+                                  )}
+                                  {label}
+                                </button>
+                              );
+                            }
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -533,6 +664,100 @@ export default function TriggerForm() {
                     {fieldErrors.chat_id && (
                       <p className="text-sm text-destructive mt-1">{fieldErrors.chat_id}</p>
                     )}
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">
+                        Cooldown (seconds)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className={cn(
+                          "w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary",
+                          fieldErrors.cooldown_seconds
+                            ? "border-destructive bg-transparent"
+                            : "border-input bg-transparent"
+                        )}
+                        value={cooldownSeconds}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next =
+                            Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+                          setCooldownSeconds(next);
+                          if (fieldErrors.cooldown_seconds) {
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              cooldown_seconds: "",
+                            }));
+                          }
+                        }}
+                        aria-invalid={!!fieldErrors.cooldown_seconds}
+                      />
+                      {fieldErrors.cooldown_seconds && (
+                        <p className="text-sm text-destructive mt-1">
+                          {fieldErrors.cooldown_seconds}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium block mb-2">
+                        Severity
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          { value: "inf", label: "Info", tone: "text-primary" },
+                          {
+                            value: "att",
+                            label: "Attention",
+                            tone: "text-amber-500",
+                          },
+                          {
+                            value: "warn",
+                            label: "Warn",
+                            tone: "text-orange-500",
+                          },
+                          {
+                            value: "critical",
+                            label: "Critical",
+                            tone: "text-red-500",
+                          },
+                        ] as { value: TriggerSeverity; label: string; tone: string }[]).map(
+                          ({ value, label, tone }) => {
+                            const selected = currentSeverity === value;
+                            const isInfo = value === "inf";
+                            return (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() =>
+                                  setActionConfig((c) => ({
+                                    ...(c as ActionConfigTelegram),
+                                    severity: value,
+                                  }))
+                                }
+                                className={cn(
+                                  "flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-colors text-sm font-medium",
+                                  selected
+                                    ? "border-primary bg-primary/10"
+                                    : "border-border hover:bg-muted/50 hover:border-muted-foreground/30"
+                                )}
+                              >
+                                {isInfo ? (
+                                  <Info className={cn("w-4 h-4", tone)} />
+                                ) : (
+                                  <AlertCircle className={cn("w-4 h-4", tone)} />
+                                )}
+                                {label}
+                              </button>
+                            );
+                          }
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
