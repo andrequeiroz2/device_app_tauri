@@ -8,12 +8,14 @@ type CurrentValueCardProps = {
   deviceUuid: string;
   measurement: string;
   scale: string;
+  label?: string;
 };
 
 export function CurrentValueCard({
   deviceUuid,
   measurement,
   scale,
+  label,
 }: CurrentValueCardProps) {
   const { token, logout } = useAuth();
 
@@ -37,11 +39,12 @@ export function CurrentValueCard({
 
   const value = data?.value ?? null;
   const recordedAt = data?.recorded_at ?? null;
-  const label = measurement.charAt(0).toUpperCase() + measurement.slice(1);
+  const defaultLabel = measurement.charAt(0).toUpperCase() + measurement.slice(1);
+  const finalLabel = label ?? defaultLabel;
 
   return (
     <div className="rounded-lg border bg-card p-4">
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium text-muted-foreground">{finalLabel}</p>
       {isLoading ? (
         <p className="text-2xl font-bold mt-1">...</p>
       ) : value !== null ? (

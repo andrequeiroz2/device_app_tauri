@@ -21,6 +21,9 @@ use crate::api::trigger::trigger_validator::{
     validate_action_device_command_against_spec, validate_condition_value_in_device_range,
 };
 use crate::api::user::user_query::user_get_by_uuid_query;
+use crate::collector::persistence::query::{
+    get_device_name_by_id_query, get_location_name_by_device_id_query,
+};
 
 #[instrument(skip(token, input, pool))]
 pub async fn create_trigger_handler(
@@ -320,6 +323,21 @@ pub async fn trigger_send_test_handler(
         .await
         .map_err(ApiError::err)?;
 
+    let (device_name, location_name) = if let Some(device_id) = trigger.device_id {
+        let device_name = get_device_name_by_id_query(pool, device_id)
+            .await
+            .map_err(ApiError::err)?
+            .unwrap_or_else(|| "Unknown device".to_string());
+
+        let location_name = get_location_name_by_device_id_query(pool, device_id)
+            .await
+            .map_err(ApiError::err)?;
+
+        (device_name, location_name)
+    } else {
+        ("Test device".to_string(), None)
+    };
+
     let config: serde_json::Value =
         serde_json::from_str(&trigger.action_config_json).unwrap_or(serde_json::Value::Null);
     let config_obj = config
@@ -327,8 +345,8 @@ pub async fn trigger_send_test_handler(
         .ok_or_else(|| ApiError::err("Invalid action config".to_string()))?;
 
     let content = TriggerNotificationContent {
-        device_name: "Test device",
-        location_name: None,
+        device_name: device_name.as_str(),
+        location_name: location_name.as_deref(),
         subject: "test",
         value: "This is a test notification",
         timestamp: &chrono::Utc::now().to_rfc3339(),

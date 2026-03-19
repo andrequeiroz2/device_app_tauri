@@ -54,31 +54,30 @@ function SensorDashboard({
     );
   }
 
-  const parameterRanges = device.parameter_ranges && Object.keys(device.parameter_ranges).length > 0;
+  const parameterRanges =
+    device.parameter_ranges && Object.keys(device.parameter_ranges).length > 0 ? device.parameter_ranges : null;
 
   return (
     <div className="space-y-6">
-      {parameterRanges && (
-        <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-          <p className="font-medium text-foreground mb-1">Reading ranges</p>
-          <ul className="text-muted-foreground list-none space-y-0.5">
-            {Object.entries(device.parameter_ranges!).map(([measurement, range]) => (
-              <li key={measurement} className="font-mono">
-                {measurement}: {range.min_reading}–{range.max_reading} {range.unit}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {deviceScale.map(([measurement, scale]) => (
-          <CurrentValueCard
-            key={measurement}
-            deviceUuid={device.uuid}
-            measurement={measurement}
-            scale={scale}
-          />
-        ))}
+        {deviceScale.map(([measurement, scale]) => {
+          const pr = parameterRanges?.[measurement];
+          const measurementTitle =
+            measurement.charAt(0).toUpperCase() + measurement.slice(1);
+          const label = pr
+            ? `${measurementTitle} ${pr.min_reading}–${pr.max_reading} ${pr.unit}`
+            : measurementTitle;
+
+          return (
+            <CurrentValueCard
+              key={measurement}
+              deviceUuid={device.uuid}
+              measurement={measurement}
+              scale={scale}
+              label={label}
+            />
+          );
+        })}
       </div>
 
       <div className="space-y-6">
@@ -353,8 +352,8 @@ export default function DeviceDashboard() {
   const isSensor = device.device_type === "sensor";
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="flex flex-col gap-6 min-h-[calc(100vh-120px)] overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-none">
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
@@ -420,11 +419,13 @@ export default function DeviceDashboard() {
         </DropdownMenu>
       </div>
 
-      {isSensor ? (
-        <SensorDashboard device={device} period={period} />
-      ) : (
-        <ActuatorDashboard device={device} period={period} />
-      )}
+      <form className="flex-1 min-h-0 overflow-y-auto">
+        {isSensor ? (
+          <SensorDashboard device={device} period={period} />
+        ) : (
+          <ActuatorDashboard device={device} period={period} />
+        )}
+      </form>
     </div>
   );
 }
